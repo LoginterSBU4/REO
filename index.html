@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Forecast Operativo Inteligente</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyCZCZye_jKxHYpfMFaOwrX4eWv8mRuAQs0",
+  authDomain: "reosbu4-50cda.firebaseapp.com",
+  projectId: "reosbu4-50cda",
+  storageBucket: "reosbu4-50cda.firebasestorage.app",
+  messagingSenderId: "657717067014",
+  appId: "1:657717067014:web:f3ddfeb0dfe06ef923f287"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+
+        // Almacenar estado global
+        window.saveData = async (data) => {
+            await setDoc(doc(db, "modelos", "junio_2026"), {
+                payload: data,
+                updated: new Date().toISOString()
+            });
+        };
+
+        // Escucha en tiempo real
+        onSnapshot(doc(db, "modelos", "junio_2026"), (doc) => {
+            if (doc.exists()) window.appData = doc.data().payload;
+            render();
+        });
+    </script>
+</head>
+<body class="bg-gray-100 p-4">
+    <header class="bg-blue-900 text-white p-4 rounded shadow-lg mb-6 flex justify-between">
+        <h1 class="text-xl font-bold">Forecast Operativo - Junio 2026</h1>
+        <div id="status" class="text-xs italic text-blue-300">Conectando a Firebase...</div>
+    </header>
+
+    <div class="flex gap-4 mb-6">
+        <button onclick="tab('input')" class="px-4 py-2 bg-white rounded shadow">Carga de Datos</button>
+        <button onclick="tab('forecast')" class="px-4 py-2 bg-white rounded shadow">Forecast & KPIs</button>
+        <button onclick="tab('params')" class="px-4 py-2 bg-white rounded shadow">Configuración</button>
+    </div>
+
+    <div id="content" class="bg-white p-6 rounded shadow">
+        <!-- Contenido dinámico -->
+    </div>
+
+    <script>
+        window.appData = {
+            params: { ggp: 45, spr: 120, shareStandard: 0.7 },
+            history: [] // Carga de días reales
+        };
+
+        function render() {
+            const content = document.getElementById('content');
+            // Lógica de renderizado según tab
+            content.innerHTML = `<h2 class="text-lg font-bold">Bienvenido al Modelo</h2><p>Firebase conectado y listo para procesar volúmenes.</p>`;
+        }
+
+        // Estacionalidad lógica
+        function applySeasonality(vol, date) {
+            // Ejemplo: +20% previo al día del padre
+            if (date >= 16 && date <= 19) return vol * 1.2;
+            // Feriado 15
+            if (date === 15) return 0;
+            return vol;
+        }
+
+        function tab(t) { console.log("Cambiando a:", t); }
+    </script>
+</body>
+</html>
