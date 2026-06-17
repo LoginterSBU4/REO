@@ -4,9 +4,17 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Forecast Recursos Operativos — Junio 2026</title>
+
+<!-- ════════════════════════════════════════════════════════════════════
+     FIREBASE SDK (módulos v10, vía CDN gstatic — funciona en GitHub Pages)
+     ════════════════════════════════════════════════════════════════════ -->
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-  import { getFirestore, doc, getDoc, setDoc, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+  import {
+    getFirestore, doc, getDoc, setDoc, onSnapshot, serverTimestamp
+  } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+  // ── TUS CREDENCIALES ─────────────────────────────────────────────────
   const firebaseConfig = {
     apiKey: "AIzaSyCZCZye_jKxHYpfMFaOwrX4eWv8mRuAQs0",
     authDomain: "reosbu4-50cda.firebaseapp.com",
@@ -15,22 +23,50 @@
     messagingSenderId: "657717067014",
     appId: "1:657717067014:web:f3ddfeb0dfe06ef923f287"
   };
+
   const app = initializeApp(firebaseConfig);
   const db = getFirestore(app);
+
+  // Documento único donde vive todo el estado de la app.
+  // Colección "forecast", documento "junio2026".
+  const DOC_REF = doc(db, "forecast", "junio2026");
+
+  // Exponemos un mini-wrapper en window para usarlo desde el script clásico de abajo
   window.fbStore = {
-    async load(){ const snap = await getDoc(doc(db, "forecast", "junio2026")); return snap.exists() ? snap.data() : null; },
-    async save(data){ await setDoc(doc(db, "forecast", "junio2026"), { ...data, _updatedAt: serverTimestamp() }, { merge: true }); return true; },
-    listen(callback){ return onSnapshot(doc(db, "forecast", "junio2026"), (snap) => { if(snap.exists()) callback(snap.data()); }); }
+    async load(){
+      try{
+        const snap = await getDoc(DOC_REF);
+        return snap.exists() ? snap.data() : null;
+      }catch(e){
+        console.error("Firestore load error:", e);
+        return null;
+      }
+    },
+    async save(data){
+      try{
+        await setDoc(DOC_REF, { ...data, _updatedAt: serverTimestamp() }, { merge: true });
+        return true;
+      }catch(e){
+        console.error("Firestore save error:", e);
+        return false;
+      }
+    },
+    // Suscripción en tiempo real — útil si varias personas editan a la vez
+    listen(callback){
+      return onSnapshot(DOC_REF, (snap) => {
+        if(snap.exists()) callback(snap.data());
+      }, (err) => console.error("Firestore listen error:", err));
+    }
   };
+
+  // Avisamos al resto del código que Firebase ya está listo
+  window.dispatchEvent(new Event('firebase-ready'));
 </script>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:Arial,sans-serif;background:#f4f5f7;color:#222;font-size:13px}
-/* MEJORAS SOLICITADAS */
-.row-est { font-size: 10px; color: #666; background-color: #fafafa !important; }
-.row-diff { font-size: 9px; font-weight: bold; }
-.diff-pos { color: #27ae60; }
-.diff-neg { color: #e74c3c; }
 header{background:#1a2e4a;color:#fff;padding:14px 22px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px}
 header h1{font-size:17px;font-weight:600}
 header span{font-size:11px;opacity:.7}
@@ -43,204 +79,989 @@ header span{font-size:11px;opacity:.7}
 .metric{background:#fff;border-radius:8px;padding:12px 14px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
 .metric-label{font-size:10px;color:#888;margin-bottom:3px;text-transform:uppercase;letter-spacing:.04em}
 .metric-value{font-size:22px;font-weight:700;color:#1a2e4a}
+.metric-sub{font-size:10px;color:#aaa;margin-top:2px}
+.section-title{font-size:11px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.06em;margin:16px 0 8px}
 .card{background:#fff;border-radius:8px;padding:14px 18px;box-shadow:0 1px 3px rgba(0,0,0,.08);margin-bottom:14px}
+.card-title{font-size:13px;font-weight:600;color:#1a2e4a;margin-bottom:12px}
 .table-wrap{overflow-x:auto}
 table{width:100%;border-collapse:collapse;font-size:11px}
 th{background:#f0f3f7;font-weight:700;font-size:10px;color:#555;padding:7px 5px;text-align:center;border-bottom:2px solid #dde2ea;white-space:nowrap}
+th.left{text-align:left}
+th.gs{background:#dbeeff;color:#1a5fa8}
+th.gv{background:#e8f5e9;color:#2d7a27}
+th.go{background:#fef3e2;color:#8a5200}
+th.gt{background:#ede8f5;color:#5b2d8a}
+th.gx{background:#f0f3f7;color:#333}
 td{padding:6px 5px;border-bottom:1px solid #f0f0f0;text-align:center;vertical-align:middle}
+td.left{text-align:left;font-weight:500}
+tr:hover td{background:#f9fbff}
+tr.hist td{background:#eff7ff}
+tr.holiday td{color:#bbb}
+tr.peak td{background:#fffbee}
+.tag{display:inline-block;font-size:9px;padding:2px 5px;border-radius:8px;font-weight:700}
+.tag-h{background:#dbeeff;color:#1a5fa8}.tag-f{background:#e3f5e1;color:#2d7a27}
+.tag-ho{background:#fde8e8;color:#c0392b}.tag-ev{background:#fff3cd;color:#856404}
+.bh{color:#c0392b;font-weight:700}.bm{color:#d68910;font-weight:600}.bl{color:#27ae60}
+.std{color:#1a5fa8}.vol{color:#2d7a27}.obip{color:#8a5200}
+.sep{border-left:2px solid #dde2ea!important}
+.info-box{background:#e8f4fd;border-left:4px solid #1a7abf;border-radius:4px;padding:10px 14px;font-size:12px;color:#1a4a6e;margin-bottom:14px}
+.warn-box{background:#fff8e1;border-left:4px solid #f39c12;border-radius:4px;padding:10px 14px;font-size:12px;color:#7d5a00;margin-bottom:14px}
+.err-box{background:#fdecea;border-left:4px solid #e74c3c;border-radius:4px;padding:10px 14px;font-size:12px;color:#7d1c14;margin-bottom:14px}
+.form-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px}
+.form-group{display:flex;flex-direction:column;gap:4px}
+.form-group label{font-size:11px;font-weight:600;color:#555}
+.form-group input,.form-group select{padding:7px 9px;border:1.5px solid #dde2ea;border-radius:5px;font-size:12px}
+.form-group .hint{font-size:10px;color:#aaa}
+.btn{padding:8px 16px;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer}
+.btn-primary{background:#1a2e4a;color:#fff}.btn-success{background:#27ae60;color:#fff}
+.btn-danger{background:#e74c3c;color:#fff}.btn-outline{background:#fff;color:#1a2e4a;border:1.5px solid #1a2e4a}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.slider-row{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.slider-row label{font-size:12px;color:#555;min-width:220px}
+.slider-row input[type=range]{flex:1;accent-color:#1a2e4a}
+.slider-row .val{font-size:13px;font-weight:700;min-width:80px;text-align:right;color:#1a2e4a}
+.chart-wrap{position:relative;width:100%}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px}
+.sync-dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:5px}
+.sync-ok{background:#2ecc71}.sync-bad{background:#e74c3c}.sync-wait{background:#f39c12;animation:pulse 1.2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+@media(max-width:640px){.metrics{grid-template-columns:1fr 1fr}.grid2,.grid3{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
-     <header>
+<header>
   <div>
     <h1>📦 Forecast Recursos Operativos</h1>
-    <span>Junio 2026 · Sincronizado con Firestore</span>
+    <span>Junio 2026 · GGP objetivo: 41 · sincronizado con Firestore</span>
   </div>
   <div style="display:flex;gap:10px;align-items:center">
+    <span id="syncStatus" style="font-size:11px;background:rgba(255,255,255,.15);padding:4px 10px;border-radius:10px">
+      <span class="sync-dot sync-wait" id="syncDot"></span><span id="syncText">Conectando…</span>
+    </span>
     <button class="btn btn-outline" onclick="exportCSV()" style="font-size:11px;padding:5px 12px">⬇ CSV</button>
   </div>
 </header>
 
 <div class="container">
+  <div id="globalError"></div>
   <div class="tabs">
     <button class="tab active" onclick="switchTab('forecast',this)">📊 Forecast</button>
     <button class="tab" onclick="switchTab('dotacion',this)">👥 Dotación</button>
-    <button class="tab" onclick="switchTab('tiempos',this)">⏱ Tiempos Op.</button>
+    <button class="tab" onclick="switchTab('tiempos',this)">⏱ Tiempos op.</button>
     <button class="tab" onclick="switchTab('productividad',this)">📈 Productividad</button>
-    <button class="tab" onclick="switchTab('parametros',this)">⚙ Parámetros</button>
+    <button class="tab" onclick="switchTab('parametros',this)">⚙️ Parámetros</button>
+    <button class="tab" onclick="switchTab('historico',this)">📅 Histórico</button>
+    <button class="tab" onclick="switchTab('eventos',this)">🗓 Eventos</button>
   </div>
 
+  <!-- FORECAST -->
   <div id="tab-forecast" class="panel active">
-    <div class="metrics" id="forecastMetrics"></div>
+    <div id="alertPanel"></div>
+    <div class="metrics" id="metricsRow"></div>
+    <div class="section-title">Forecast diario — Junio 2026</div>
     <div class="card">
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th class="left">Fecha</th>
-              <th>Día</th>
-              <th>Tipo</th>
-              <th>Volumen</th>
-              <th>Eficiencia</th>
-            </tr>
-          </thead>
-          <tbody id="forecastBody"></tbody>
-        </table>
-      </div>
+      <div class="table-wrap"><table>
+        <thead><tr>
+          <th class="left">Fecha</th><th>Día</th><th>Vol.proy.</th><th>Vol.proc.</th>
+          <th>Ev.AM</th><th>Ausentes<br>est.</th><th>Presentes<br>est.</th>
+          <th>Ev.PM</th><th>Rutas</th><th>GGP<br>obj.</th><th>DS%<br>est.</th><th>Estado</th>
+        </tr></thead>
+        <tbody id="forecastBody"></tbody>
+      </table></div>
+    </div>
+    <div class="grid2">
+      <div class="card"><div class="card-title">Volumen proyectado vs procesado</div>
+        <div class="chart-wrap" style="height:240px"><canvas id="chartVol"></canvas></div></div>
+      <div class="card"><div class="card-title">Eventuales AM convocados vs presentes</div>
+        <div class="chart-wrap" style="height:240px"><canvas id="chartAM"></canvas></div></div>
+    </div>
+    <div class="grid2">
+      <div class="card"><div class="card-title">Rutas diarias</div>
+        <div class="chart-wrap" style="height:200px"><canvas id="chartRutas"></canvas></div></div>
+      <div class="card"><div class="card-title">Desvío volumen (proyectado vs procesado)</div>
+        <div class="chart-wrap" style="height:200px"><canvas id="chartDesvio"></canvas></div></div>
     </div>
   </div>
 
+  <!-- DOTACIÓN -->
   <div id="tab-dotacion" class="panel">
+    <div class="info-box">Dotación ideal estimada por flujo basada en GGP=41 y ratios históricos calibrados. <strong>H</strong> = dato histórico real.</div>
     <div class="metrics" id="dotMetrics"></div>
+    <div class="section-title">Dotación ideal por flujo y puesto</div>
     <div class="card">
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th class="left">Fecha</th>
-              <th>Real</th>
-              <th>Proyectado</th>
-              <th>Diferencia</th>
-            </tr>
-          </thead>
-          <tbody id="dotBody"></tbody>
-        </table>
-      </div>
+      <div class="table-wrap"><table>
+        <thead>
+          <tr>
+            <th class="left" rowspan="2">Fecha</th><th rowspan="2">Día</th><th rowspan="2">Vol.</th>
+            <th class="gs sep" colspan="5">🔵 Standard</th>
+            <th class="gv sep" colspan="5">🟢 Voluminoso</th>
+            <th class="go sep" colspan="2">🟡 One Bip</th>
+            <th class="gt sep" colspan="2">Op.</th>
+            <th class="gx sep" colspan="3">Totales</th>
+          </tr>
+          <tr>
+            <th class="gs sep">Palet.</th><th class="gs">Tolv.</th><th class="gs">Etiq.</th><th class="gs">Pesc.</th><th class="gs">Sort.</th>
+            <th class="gv sep">Palet.</th><th class="gv">Tolv.</th><th class="gv">Etiq.</th><th class="gv">P/S</th><th class="gv">Sub</th>
+            <th class="go sep">Palet.</th><th class="go">Etiq/S</th>
+            <th class="gt sep">Var/5S</th><th class="gt">Ausen.</th>
+            <th class="gx sep">Conv.</th><th class="gx">Pres.</th><th class="gx">GGP<br>est.</th>
+          </tr>
+        </thead>
+        <tbody id="dotBody"></tbody>
+      </table></div>
+    </div>
+    <div class="grid3">
+      <div class="card"><div class="card-title">Real vs ideal AM (histórico)</div>
+        <div class="chart-wrap" style="height:200px"><canvas id="chartDotComp"></canvas></div></div>
+      <div class="card"><div class="card-title">Distribución Standard (prom.)</div>
+        <div class="chart-wrap" style="height:200px"><canvas id="chartStd"></canvas></div></div>
+      <div class="card"><div class="card-title">Distribución Voluminoso (prom.)</div>
+        <div class="chart-wrap" style="height:200px"><canvas id="chartVolD"></canvas></div></div>
     </div>
   </div>
+
+  <!-- TIEMPOS -->
   <div id="tab-tiempos" class="panel">
+    <div class="info-box">Tiempos operativos reales registrados.</div>
+    <div class="metrics" id="tiempoMetrics"></div>
+    <div class="section-title">Histórico de tiempos operativos</div>
     <div class="card">
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th class="left">Fecha</th>
-              <th>Tiempo Real (min)</th>
-              <th>Forecast (Fin de mes)</th>
-            </tr>
-          </thead>
-          <tbody id="tiempoBody"></tbody>
-        </table>
-      </div>
+      <div class="table-wrap"><table>
+        <thead><tr>
+          <th class="left">Fecha</th><th>Día</th><th>Vol.</th>
+          <th>Inicio<br>ruteo</th><th>Inicio<br>proceso</th><th>Fin<br>proceso</th>
+          <th>Dur. proc.<br>(min)</th>
+          <th>Inicio<br>despacho</th><th>Fin<br>despacho</th><th>Dur. desp.<br>(min)</th>
+          <th>Tipo</th>
+        </tr></thead>
+        <tbody id="tiempoBody"></tbody>
+      </table></div>
+    </div>
+    <div class="grid2">
+      <div class="card"><div class="card-title">Duración del procesamiento (minutos)</div>
+        <div class="chart-wrap" style="height:230px"><canvas id="chartProcDur"></canvas></div></div>
+      <div class="card"><div class="card-title">Duración del despacho (minutos)</div>
+        <div class="chart-wrap" style="height:230px"><canvas id="chartDespDur"></canvas></div></div>
     </div>
   </div>
 
+  <!-- PRODUCTIVIDAD -->
   <div id="tab-productividad" class="panel">
+    <div class="metrics" id="prodMetrics"></div>
+    <div class="grid2">
+      <div class="card"><div class="card-title">GGP real vs objetivo (41) — histórico</div>
+        <div class="chart-wrap" style="height:240px"><canvas id="chartGGP"></canvas></div></div>
+      <div class="card"><div class="card-title">GGP cliente vs GGP real</div>
+        <div class="chart-wrap" style="height:240px"><canvas id="chartGGPComp"></canvas></div></div>
+    </div>
+    <div class="grid2">
+      <div class="card"><div class="card-title">DS% (Delivery Success) diario</div>
+        <div class="chart-wrap" style="height:200px"><canvas id="chartDS"></canvas></div></div>
+      <div class="card"><div class="card-title">Ausentismo AM (%)</div>
+        <div class="chart-wrap" style="height:200px"><canvas id="chartAus"></canvas></div></div>
+    </div>
+    <div class="section-title">Shares históricos por flujo</div>
     <div class="card">
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th class="left">Fecha</th>
-              <th>Real</th>
-              <th>Forecast Proyectado</th>
-            </tr>
-          </thead>
-          <tbody id="prodBody"></tbody>
-        </table>
+      <div class="table-wrap"><table>
+        <thead><tr>
+          <th class="left">Fecha</th><th>Día</th><th>Vol.</th>
+          <th>%Std</th><th>%Vol</th><th>%OBip</th>
+          <th>Q Std</th><th>Q Vol</th><th>Q OBip</th>
+          <th>GGP<br>cliente</th><th>GGP<br>real</th><th>GNP</th><th>DS%</th>
+        </tr></thead>
+        <tbody id="shareBody"></tbody>
+      </table></div>
+    </div>
+  </div>
+
+  <!-- PARÁMETROS -->
+  <div id="tab-parametros" class="panel">
+    <div class="info-box">Parámetros calibrados automáticamente con el historial. Podés ajustar manualmente.</div>
+    <div class="card">
+      <div class="card-title">Productividad y capacidad</div>
+      <div class="slider-row"><label>GGP objetivo (paq/pers/hora)</label>
+        <input type="range" id="slGGP" min="25" max="70" step="1" oninput="syncParam('GGP',this.value)">
+        <span class="val" id="valGGP"></span></div>
+      <div class="slider-row"><label>Capacidad por ruta (paquetes)</label>
+        <input type="range" id="slRuta" min="80" max="200" step="1" oninput="syncParam('paqRuta',this.value)">
+        <span class="val" id="valRuta"></span></div>
+      <div class="slider-row"><label>Cobertura AM (% volumen)</label>
+        <input type="range" id="slCob" min="70" max="100" step="1" oninput="syncParam('cobAM',this.value)">
+        <span class="val" id="valCob"></span></div>
+      <div class="slider-row"><label>Volumen base diario (días hábiles)</label>
+        <input type="range" id="slVol" min="4000" max="16000" step="100" oninput="syncParam('volBase',this.value)">
+        <span class="val" id="valVol"></span></div>
+      <div class="slider-row"><label>% Ausentismo estimado AM</label>
+        <input type="range" id="slAus" min="0" max="15" step="0.5" oninput="syncParam('ausAM',this.value)">
+        <span class="val" id="valAus"></span></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Shares por flujo (calibrados con historial)</div>
+      <div class="form-grid">
+        <div class="form-group"><label>Share Standard %</label>
+          <input type="number" id="shareStd" step="0.1" onchange="params.shareStd=+this.value/100;saveAndCompute()">
+          <span class="hint" id="hintStd"></span></div>
+        <div class="form-group"><label>Share Voluminoso %</label>
+          <input type="number" id="shareVol" step="0.1" onchange="params.shareVol=+this.value/100;saveAndCompute()">
+          <span class="hint" id="hintVol"></span></div>
+        <div class="form-group"><label>Share One Bip %</label>
+          <input type="number" id="shareObip" step="0.1" onchange="params.shareObip=+this.value/100;saveAndCompute()">
+          <span class="hint" id="hintObip"></span></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">Umbrales Eventuales PM</div>
+      <div class="form-grid">
+        <div class="form-group"><label>Umbral PM ≥ 1</label>
+          <input type="number" id="umbPM1" step="100" onchange="params.umbralPM1=+this.value;saveAndCompute()"></div>
+        <div class="form-group"><label>Umbral PM ≥ 2</label>
+          <input type="number" id="umbPM2" step="100" onchange="params.umbralPM2=+this.value;saveAndCompute()"></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">Factores por día de semana (calibrados)</div>
+      <div class="form-grid" id="factDia"></div>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-primary" onclick="saveAndCompute()">💾 Guardar y recalcular</button>
+      <button class="btn btn-outline" onclick="resetDefaults()">↩ Restaurar defaults</button>
+      <button class="btn btn-success" onclick="recalibrate()">🔄 Recalibrar con historial</button>
+    </div>
+  </div>
+
+  <!-- HISTÓRICO -->
+  <div id="tab-historico" class="panel">
+    <div class="info-box">Días reales cargados. Editá cualquier campo — se sincroniza con Firestore automáticamente.</div>
+    <div class="card">
+      <div class="table-wrap"><table style="font-size:10px">
+        <thead><tr>
+          <th>Fecha</th><th>Día</th><th>Vol.proy.</th><th>Vol.proc.</th>
+          <th>Ev.AM</th><th>Aus.AM</th><th>Ev.PM</th><th>Rutas</th>
+          <th>GGP<br>cliente</th><th>GGP<br>real</th><th>GNP</th><th>DS%</th>
+          <th>%Std</th><th>%Vol</th><th>%OBip</th><th>Acciones</th>
+        </tr></thead>
+        <tbody id="histBody"></tbody>
+      </table></div>
+      <div class="btn-row" style="margin-top:12px">
+        <button class="btn btn-success" onclick="addHistRow()">+ Agregar día</button>
       </div>
     </div>
   </div>
 
-  <div id="tab-parametros" class="panel">
+  <!-- EVENTOS -->
+  <div id="tab-eventos" class="panel">
+    <div class="info-box">Feriados y eventos que afectan el volumen proyectado.</div>
     <div class="card">
-      <div class="form-grid">
-        <div class="form-group">
-          <label>Productividad Objetivo por Turno</label>
-          <input type="number" id="paramProdObj" placeholder="Ej: 41">
-        </div>
-        <div class="form-group">
-          <label>Backlog Permitido</label>
-          <input type="number" id="paramBacklog" placeholder="Ej: 500">
-        </div>
+      <div class="table-wrap"><table>
+        <thead><tr>
+          <th class="left">Fecha</th><th class="left">Descripción</th><th>Factor</th><th>Tipo</th><th>Activo</th><th></th>
+        </tr></thead>
+        <tbody id="eventosBody"></tbody>
+      </table></div>
+      <div class="btn-row" style="margin-top:12px">
+        <button class="btn btn-success" onclick="addEvento()">+ Agregar evento</button>
       </div>
-      <button class="btn btn-primary" style="margin-top:15px" onclick="saveParams()">Guardar Parámetros</button>
+    </div>
+    <div class="card">
+      <div class="card-title">Agregar / editar evento</div>
+      <div class="form-grid">
+        <div class="form-group"><label>Fecha</label><input type="date" id="evFecha" min="2026-06-01" max="2026-06-30"></div>
+        <div class="form-group"><label>Descripción</label><input type="text" id="evDesc"></div>
+        <div class="form-group"><label>Factor (0=sin operación)</label><input type="number" id="evFactor" step="0.01" value="1.00" min="0" max="3"></div>
+        <div class="form-group"><label>Tipo</label><select id="evTipo">
+          <option value="holiday">Feriado</option><option value="event">Evento ecommerce</option>
+          <option value="peak">Pico estacional</option><option value="low">Baja esperada</option>
+        </select></div>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-primary" onclick="saveEvento()">Guardar</button>
+        <button class="btn btn-outline" onclick="clearEventoForm()">Limpiar</button>
+      </div>
     </div>
   </div>
 </div>
+
 <script>
-  let rawData = {};
-  window.fbStore.listen(data => {
-    rawData = data;
-    renderAll();
+const DIAS=['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+
+// ── DATOS HISTÓRICOS DE FÁBRICA (semilla inicial — solo se usan si Firestore está vacío) ──
+const HIST_ORIG=[
+  {d:'2026-06-01',semana:23,volProy:6773,vol:7270,volRut:7308,rutas:58,backlog:0,
+   inicioRuteo:'03:55',inicioProceso:'04:11',finProceso:'06:55',inicioDespacho:'08:00',finDespacho:'08:49',
+   evAM:19,evPM:1,ausAM:0,ausPM:0,
+   std:{palet:1,tolv:2,etiq:3,pesc:3,sort:3},
+   volf:{palet:1,tolv:1,etiq:1,pesc:0,sort:0,ps:2},
+   obip:{palet:0,es:2},varias:1,
+   shareVol:0.1601,shareObip:0.0146,shareStd:0.8253,
+   ggpCliente:44.43,ggpReal:45.68,gnp:47.12,ds:0.980},
+  {d:'2026-06-02',semana:23,volProy:9510,vol:9432,volRut:9480,rutas:79,backlog:0,
+   inicioRuteo:'04:05',inicioProceso:'04:15',finProceso:'07:20',inicioDespacho:'08:00',finDespacho:'08:58',
+   evAM:28,evPM:1,ausAM:1,ausPM:0,
+   std:{palet:1,tolv:2,etiq:4,pesc:4,sort:5},
+   volf:{palet:1,tolv:2,etiq:2,pesc:0,sort:0,ps:3},
+   obip:{palet:1,es:2},varias:1,
+   shareVol:0.1355,shareObip:0.0323,shareStd:0.8322,
+   ggpCliente:41.43,ggpReal:42.11,gnp:41.35,ds:0.977},
+  {d:'2026-06-03',semana:23,volProy:7644,vol:9051,volRut:9075,rutas:69,backlog:0,
+   inicioRuteo:'03:50',inicioProceso:'04:17',finProceso:'07:00',inicioDespacho:'08:00',finDespacho:'11:17',
+   evAM:24,evPM:2,ausAM:0,ausPM:0,
+   std:{palet:1,tolv:2,etiq:4,pesc:4,sort:5},
+   volf:{palet:1,tolv:1,etiq:1,pesc:0,sort:0,ps:2},
+   obip:{palet:1,es:2},varias:2,
+   shareVol:0.1204,shareObip:0.0274,shareStd:0.8522,
+   ggpCliente:41.09,ggpReal:47.14,gnp:46.37,ds:0.981},
+  {d:'2026-06-04',semana:23,volProy:9071,vol:7531,volRut:7591,rutas:70,backlog:0,
+   inicioRuteo:'04:10',inicioProceso:'04:22',finProceso:'06:52',inicioDespacho:'08:00',finDespacho:'08:37',
+   evAM:24,evPM:2,ausAM:1,ausPM:0,
+   std:{palet:2,tolv:2,etiq:3,pesc:4,sort:4},
+   volf:{palet:1,tolv:1,etiq:1,pesc:0,sort:0,ps:2},
+   obip:{palet:1,es:2},varias:2,
+   shareVol:0.1419,shareObip:0.0231,shareStd:0.8350,
+   ggpCliente:36.96,ggpReal:39.22,gnp:39.02,ds:0.987},
+  {d:'2026-06-05',semana:23,volProy:6998,vol:6948,volRut:7030,rutas:59,backlog:0,
+   inicioRuteo:'03:55',inicioProceso:'04:16',finProceso:'07:16',inicioDespacho:'08:00',finDespacho:'08:44',
+   evAM:16,evPM:2,ausAM:0,ausPM:0,
+   std:{palet:0,tolv:1,etiq:2,pesc:3,sort:4},
+   volf:{palet:0,tolv:1,etiq:1,pesc:0,sort:0,ps:2},
+   obip:{palet:1,es:1},varias:2,
+   shareVol:0.1374,shareObip:0.0327,shareStd:0.8299,
+   ggpCliente:47.43,ggpReal:54.28,gnp:54.21,ds:0.987},
+  {d:'2026-06-06',semana:23,volProy:5073,vol:4981,volRut:5043,rutas:48,backlog:1305,
+   inicioRuteo:'03:55',inicioProceso:'04:13',finProceso:'06:30',inicioDespacho:'08:00',finDespacho:'08:58',
+   evAM:27,evPM:0,ausAM:0,ausPM:0,
+   std:{palet:2,tolv:2,etiq:3,pesc:4,sort:4},
+   volf:{palet:1,tolv:2,etiq:3,pesc:0,sort:0,ps:4},
+   obip:{palet:1,es:1},varias:0,
+   shareVol:0.1383,shareObip:0.0272,shareStd:0.8345,
+   ggpCliente:21.62,ggpReal:23.06,gnp:22.44,ds:0.961},
+  {d:'2026-06-08',semana:24,volProy:6628,vol:7210,volRut:7380,rutas:57,backlog:0,
+   inicioRuteo:'03:50',inicioProceso:'04:20',finProceso:'07:32',inicioDespacho:'08:00',finDespacho:'08:51',
+   evAM:17,evPM:0,ausAM:0,ausPM:0,
+   std:{palet:0,tolv:1,etiq:3,pesc:3,sort:3},
+   volf:{palet:1,tolv:1,etiq:1,pesc:0,sort:0,ps:2},
+   obip:{palet:1,es:1},varias:0,
+   shareVol:0.1230,shareObip:0.0159,shareStd:0.8611,
+   ggpCliente:49.86,ggpReal:53.01,gnp:53.56,ds:0.987},
+  {d:'2026-06-09',semana:24,volProy:11586,vol:9498,volRut:9498,rutas:79,backlog:0,
+   inicioRuteo:'03:50',inicioProceso:'04:26',finProceso:'07:09',inicioDespacho:'08:00',finDespacho:'09:36',
+   evAM:35,evPM:0,ausAM:2,ausPM:0,
+   std:{palet:2,tolv:3,etiq:4,pesc:4,sort:7},
+   volf:{palet:1,tolv:2,etiq:3,pesc:0,sort:0,ps:4},
+   obip:{palet:1,es:2},varias:0,
+   shareVol:0.1423,shareObip:0.0238,shareStd:0.8339,
+   ggpCliente:34.18,ggpReal:33.92,gnp:33.62,ds:0.991},
+  {d:'2026-06-10',semana:24,volProy:10820,vol:8508,volRut:8508,rutas:78,backlog:0,
+   inicioRuteo:'04:30',inicioProceso:'04:35',finProceso:'07:00',inicioDespacho:'08:00',finDespacho:'09:09',
+   evAM:31,evPM:0,ausAM:2,ausPM:0,
+   std:{palet:1,tolv:2,etiq:4,pesc:3,sort:7},
+   volf:{palet:1,tolv:2,etiq:2,pesc:0,sort:0,ps:4},
+   obip:{palet:1,es:2},varias:0,
+   shareVol:0.1025,shareObip:0.0243,shareStd:0.8732,
+   ggpCliente:34.18,ggpReal:34.31,gnp:33.86,ds:0.987},
+];
+
+const DEFAULT_EVENTOS=[
+  {fecha:'2026-06-15',desc:'Feriado Güemes',factor:0,tipo:'holiday',activo:true},
+  {fecha:'2026-06-20',desc:'Día de la Bandera',factor:0,tipo:'holiday',activo:true},
+  {fecha:'2026-06-21',desc:'Día del Padre',factor:0,tipo:'holiday',activo:true},
+  {fecha:'2026-06-16',desc:'Pre-feriado',factor:1.12,tipo:'event',activo:true},
+  {fecha:'2026-06-17',desc:'Semana Día del Padre',factor:1.18,tipo:'peak',activo:true},
+  {fecha:'2026-06-18',desc:'Semana Día del Padre',factor:1.20,tipo:'peak',activo:true},
+  {fecha:'2026-06-19',desc:'Pico Día del Padre',factor:1.25,tipo:'peak',activo:true},
+];
+
+function calibrateFromHist(hist){
+  const h=hist.filter(r=>r.vol>0);
+  if(!h.length) return JSON.parse(JSON.stringify(DEFAULT_PARAMS_FALLBACK));
+  const shareStd=h.reduce((s,r)=>s+r.shareStd,0)/h.length;
+  const shareVol=h.reduce((s,r)=>s+r.shareVol,0)/h.length;
+  const shareObip=h.reduce((s,r)=>s+r.shareObip,0)/h.length;
+  const ausAM=h.reduce((s,r)=>s+(r.ausAM/(r.evAM||1)),0)/h.length*100;
+  const paqRuta=Math.round(h.reduce((s,r)=>s+(r.volRut||r.vol)/r.rutas,0)/h.length);
+  const midDays=h.filter(r=>r.vol>5000&&r.vol<12000);
+  const volBase=midDays.length?Math.round(midDays.reduce((s,r)=>s+r.vol,0)/midDays.length):7500;
+  const factDia={Dom:0.82,Lun:1.08,Mar:1.05,Mié:1.02,Jue:0.97,Vie:0.88,Sáb:0.78};
+  h.forEach(r=>{const dow=new Date(r.d+'T00:00').getDay();const dn=DIAS[dow];
+    if(factDia[dn]!==undefined)factDia[dn]=+((factDia[dn]*0.4+r.vol/volBase*0.6).toFixed(3));
+  });
+  const rStd={palet:0,tolv:0,etiq:0,pesc:0,sort:0};
+  h.forEach(r=>{const s=r.std;const tot=s.palet+s.tolv+s.etiq+s.pesc+s.sort||1;
+    rStd.palet+=s.palet/tot;rStd.tolv+=s.tolv/tot;rStd.etiq+=s.etiq/tot;rStd.pesc+=s.pesc/tot;rStd.sort+=s.sort/tot;});
+  Object.keys(rStd).forEach(k=>rStd[k]/=h.length);
+  const rVol={palet:0,tolv:0,etiq:0,ps:0};
+  h.forEach(r=>{const v=r.volf;const tot=v.palet+v.tolv+v.etiq+v.ps||1;
+    rVol.palet+=v.palet/tot;rVol.tolv+=v.tolv/tot;rVol.etiq+=v.etiq/tot;rVol.ps+=v.ps/tot;});
+  Object.keys(rVol).forEach(k=>rVol[k]/=h.length);
+  const rObip={palet:0,es:0};
+  h.forEach(r=>{const o=r.obip;const tot=o.palet+o.es||1;rObip.palet+=o.palet/tot;rObip.es+=o.es/tot;});
+  Object.keys(rObip).forEach(k=>rObip[k]/=h.length);
+  const avgDS=h.reduce((s,r)=>s+r.ds,0)/h.length;
+  const pmDays=h.filter(r=>r.evPM>0);
+  const umbralPM1=pmDays.length?Math.round(pmDays.reduce((s,r)=>s+r.vol,0)/pmDays.length*0.9):8000;
+  const umbralPM2=pmDays.filter(r=>r.evPM>=2).length?
+    Math.round(pmDays.filter(r=>r.evPM>=2).reduce((s,r)=>s+r.vol,0)/pmDays.filter(r=>r.evPM>=2).length*0.9):9200;
+  return{shareStd,shareVol,shareObip,ausAM:+ausAM.toFixed(1),paqRuta,volBase,factDia,
+    rStd,rVol,rObip,avgDS,umbralPM1,umbralPM2,GGP:41,cobAM:95};
+}
+const DEFAULT_PARAMS_FALLBACK={shareStd:0.837,shareVol:0.137,shareObip:0.025,ausAM:2,paqRuta:120,volBase:7500,
+  factDia:{Dom:0.82,Lun:1.08,Mar:1.05,Mié:1.02,Jue:0.97,Vie:0.88,Sáb:0.78},
+  rStd:{palet:0.08,tolv:0.145,etiq:0.215,pesc:0.225,sort:0.25},
+  rVol:{palet:0.12,tolv:0.185,etiq:0.185,ps:0.51},rObip:{palet:0.3,es:0.7},
+  avgDS:0.98,umbralPM1:8500,umbralPM2:9500,GGP:41,cobAM:95};
+
+const DEFAULT_PARAMS=calibrateFromHist(HIST_ORIG);
+
+// ── ESTADO EN MEMORIA ─────────────────────────────────────────────────────────
+let params=JSON.parse(JSON.stringify(DEFAULT_PARAMS));
+let histData=JSON.parse(JSON.stringify(HIST_ORIG));
+let eventos=JSON.parse(JSON.stringify(DEFAULT_EVENTOS));
+let editEvIdx=-1;
+let charts={};
+let fbReady=false;
+let saveTimer=null;
+let suppressSave=false; // evita loop al recibir datos remotos
+
+function setSync(state,text){
+  const dot=document.getElementById('syncDot');
+  dot.className='sync-dot '+(state==='ok'?'sync-ok':state==='bad'?'sync-bad':'sync-wait');
+  document.getElementById('syncText').textContent=text;
+}
+
+function showGlobalError(msg){
+  document.getElementById('globalError').innerHTML=
+    `<div class="err-box"><strong>⚠ Error de sincronización:</strong> ${msg}<br>
+     Los cambios se guardan localmente en esta pestaña pero no se subieron a Firestore. Revisá la consola del navegador (F12) y las reglas de seguridad de Firestore.</div>`;
+}
+function clearGlobalError(){document.getElementById('globalError').innerHTML='';}
+
+// ── SINCRONIZACIÓN CON FIRESTORE ────────────────────────────────────────────
+async function initFirebaseSync(){
+  if(!window.fbStore){ setSync('bad','Firebase no cargó'); return; }
+  setSync('wait','Cargando datos…');
+  try{
+    const remote = await window.fbStore.load();
+    if(remote && remote.params && remote.histData && remote.eventos){
+      params = remote.params;
+      histData = remote.histData;
+      eventos = remote.eventos;
+      setSync('ok','Sincronizado');
+    } else {
+      // Primera vez: no hay documento aún -> subimos la semilla inicial
+      setSync('wait','Inicializando documento…');
+      const ok = await window.fbStore.save({params, histData, eventos});
+      setSync(ok?'ok':'bad', ok?'Documento creado':'No se pudo crear el documento');
+    }
+    fbReady=true;
+    clearGlobalError();
+  }catch(e){
+    console.error(e);
+    setSync('bad','Error al conectar');
+    showGlobalError('No se pudo leer el documento de Firestore. Verificá que las Security Rules permitan lectura/escritura.');
+  }
+  // Suscripción en tiempo real para reflejar cambios de otros usuarios/pestañas
+  window.fbStore.listen((remote)=>{
+    if(!remote) return;
+    suppressSave=true;
+    if(remote.params) params=remote.params;
+    if(remote.histData) histData=remote.histData;
+    if(remote.eventos) eventos=remote.eventos;
+    updateUI(); buildFactDiaUI(); compute();
+    renderHistTabIfActive(); renderEventosTabIfActive();
+    setSync('ok','Sincronizado (remoto)');
+    suppressSave=false;
+  });
+  updateUI(); buildFactDiaUI(); compute();
+}
+
+function renderHistTabIfActive(){ if(document.getElementById('tab-historico').classList.contains('active')) renderHistTab(); }
+function renderEventosTabIfActive(){ if(document.getElementById('tab-eventos').classList.contains('active')) renderEventosTab(); }
+
+// Guardado debounced hacia Firestore (evita escribir en cada tecla)
+function saveAll(){
+  if(suppressSave) return;
+  setSync('wait','Guardando…');
+  clearTimeout(saveTimer);
+  saveTimer=setTimeout(async ()=>{
+    if(!window.fbStore){ setSync('bad','Firebase no disponible'); return; }
+    const ok = await window.fbStore.save({params, histData, eventos});
+    if(ok){ setSync('ok','Sincronizado'); clearGlobalError(); }
+    else { setSync('bad','Error al guardar'); showGlobalError('No se pudieron guardar los cambios en Firestore.'); }
+  }, 600);
+}
+function saveAndCompute(){saveAll();compute();}
+
+function recalibrate(){
+  const cal=calibrateFromHist(histData);
+  cal.GGP=params.GGP;
+  params=cal;saveAndCompute();updateUI();
+  alert('✅ Modelo recalibrado con los '+histData.length+' días históricos.');
+}
+function resetDefaults(){if(!confirm('¿Restaurar defaults?'))return;
+  params=JSON.parse(JSON.stringify(DEFAULT_PARAMS));saveAndCompute();updateUI();buildFactDiaUI();}
+
+function syncParam(key,val){ params[key]=+val; updateUI(); saveAndCompute(); }
+
+function timeToMin(t){if(!t)return null;const[h,m]=t.split(':').map(Number);return h*60+m;}
+function minToHM(m){if(m==null)return'—';return String(Math.floor(m/60)).padStart(2,'0')+':'+String(Math.round(m%60)).padStart(2,'0');}
+
+function updateUI(){
+  const s=(id,v)=>{const el=document.getElementById(id);if(el)el.value=v;};
+  const t=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v;};
+  s('slGGP',params.GGP);t('valGGP',params.GGP+' paq/h');
+  s('slRuta',params.paqRuta);t('valRuta',params.paqRuta+' paq');
+  s('slCob',params.cobAM);t('valCob',params.cobAM+'%');
+  s('slVol',params.volBase);t('valVol',(params.volBase||0).toLocaleString('es-AR'));
+  s('slAus',params.ausAM);t('valAus',params.ausAM+'%');
+  s('umbPM1',params.umbralPM1);s('umbPM2',params.umbralPM2);
+  s('shareStd',(params.shareStd*100).toFixed(1));
+  s('shareVol',(params.shareVol*100).toFixed(1));
+  s('shareObip',(params.shareObip*100).toFixed(1));
+  const cal=calibrateFromHist(histData);
+  t('hintStd','Prom. hist.: '+(cal.shareStd*100).toFixed(1)+'%');
+  t('hintVol','Prom. hist.: '+(cal.shareVol*100).toFixed(1)+'%');
+  t('hintObip','Prom. hist.: '+(cal.shareObip*100).toFixed(1)+'%');
+}
+
+function buildFactDiaUI(){
+  const c=document.getElementById('factDia');if(!c)return;c.innerHTML='';
+  Object.entries(params.factDia).forEach(([dia,val])=>{
+    const g=document.createElement('div');g.className='form-group';
+    g.innerHTML=`<label>${dia}</label><input type="number" step="0.01" value="${val}" onchange="params.factDia['${dia}']=+this.value;saveAndCompute()"><span class="hint">Factor vol. relativo al base</span>`;
+    c.appendChild(g);
+  });
+}
+
+function getEventoMap(){
+  const m={};eventos.forEach(ev=>{if(ev.activo){
+    const d=parseInt(ev.fecha.split('-')[2]);
+    if(!m[d]||ev.factor<(m[d].factor??1))m[d]=ev;
+  }});return m;
+}
+function histMapFn(){const m={};histData.forEach(h=>{const d=parseInt(h.d.split('-')[2]);m[d]=h;});return m;}
+
+function calcDotacion(vol){
+  const r=params.rStd||DEFAULT_PARAMS.rStd;
+  const rv=params.rVol||DEFAULT_PARAMS.rVol;
+  const ro=params.rObip||DEFAULT_PARAMS.rObip;
+  const totalAM=Math.ceil(vol*(params.cobAM/100)/(params.GGP*8));
+  const pStd=Math.round(totalAM*params.shareStd);
+  const pVol=Math.round(totalAM*params.shareVol);
+  const pObip=Math.max(1,Math.round(totalAM*params.shareObip));
+  const std={
+    palet:Math.max(0,Math.round(pStd*r.palet)),
+    tolv:Math.max(1,Math.round(pStd*r.tolv)),
+    etiq:Math.max(1,Math.round(pStd*r.etiq)),
+    pesc:Math.max(1,Math.round(pStd*r.pesc)),
+    sort:Math.max(1,Math.round(pStd*r.sort)),
+  };
+  const volf={
+    palet:Math.max(0,Math.round(pVol*rv.palet)),
+    tolv:Math.max(1,Math.round(pVol*rv.tolv)),
+    etiq:Math.max(1,Math.round(pVol*rv.etiq)),
+    ps:Math.max(1,Math.round(pVol*rv.ps)),
+  };
+  const obip={palet:Math.max(0,Math.round(pObip*ro.palet)),es:Math.max(1,Math.round(pObip*ro.es))};
+  const stdTotal=std.palet+std.tolv+std.etiq+std.pesc+std.sort;
+  const volTotal=volf.palet+volf.tolv+volf.etiq+volf.ps;
+  const obipTotal=obip.palet+obip.es;
+  const varias=vol>=9000?2:vol>=7000?1:0;
+  const ausentes=Math.round(totalAM*(params.ausAM/100));
+  const presentes=totalAM-ausentes;
+  const ggpEst=presentes>0?+(vol/presentes/8).toFixed(1):0;
+  return{totalAM,std,volf,obip,stdTotal,volTotal,obipTotal,varias,ausentes,presentes,
+    grandTotal:totalAM,ggpEst};
+}
+
+function computeDay(d,dow){
+  const hm=histMapFn(),em=getEventoMap();
+  const dnom=DIAS[dow];
+  if(hm[d]){
+    const h=hm[d];const dot=calcDotacion(h.vol);
+    return{d,dnom,vol:h.vol,volProy:h.volProy,evAM:h.evAM,evPM:h.evPM,
+      ausAM:h.ausAM,presentes:h.evAM-h.ausAM,rutas:h.rutas,
+      ggpReal:h.ggpReal,ggpCliente:h.ggpCliente,gnp:h.gnp,ds:h.ds,
+      tipo:'hist',evento:null,dot,hist:h};
+  }
+  const ev=em[d];
+  let factor=params.factDia[dnom]||1;
+  let tipo='forecast',eventoLabel=null;
+  if(ev){
+    if(ev.factor===0)return{d,dnom,vol:0,volProy:0,evAM:0,evPM:0,ausAM:0,presentes:0,
+      rutas:0,ggpReal:null,tipo:'holiday',evento:ev.desc,dot:null,hist:null};
+    factor*=ev.factor;tipo=ev.tipo==='peak'?'peak':'event';eventoLabel=ev.desc;
+  }
+  const vol=Math.round(params.volBase*factor);
+  const evAM=Math.ceil(vol*(params.cobAM/100)/(params.GGP*8));
+  const ausAM=Math.round(evAM*(params.ausAM/100));
+  const evPM=vol>=params.umbralPM2?2:vol>=params.umbralPM1?1:0;
+  const rutas=Math.ceil(vol*1.003/params.paqRuta);
+  const dot=calcDotacion(vol);
+  const dsEst=+(params.avgDS||0.982);
+  return{d,dnom,vol,volProy:vol,evAM,evPM,ausAM,presentes:evAM-ausAM,rutas,
+    ggpReal:null,ds:dsEst,tipo,evento:eventoLabel,dot,hist:null};
+}
+
+function allRows(){
+  const rows=[];
+  for(let d=1;d<=30;d++){const dow=new Date(2026,5,d).getDay();rows.push(computeDay(d,dow));}
+  return rows;
+}
+
+function compute(){
+  const rows=allRows();
+  renderForecastTab(rows);renderDotacionTab(rows);
+  renderTiemposTab(rows);renderProductividadTab(rows);renderAlert(rows);
+}
+
+// ── FORECAST ──────────────────────────────────────────────────────────────────
+function renderForecastTab(rows){
+  const tb=document.getElementById('forecastBody');tb.innerHTML='';
+  rows.forEach(r=>{
+    const tr=document.createElement('tr');
+    if(r.tipo==='hist')tr.className='hist';
+    else if(r.tipo==='holiday')tr.className='holiday';
+    else if(r.tipo==='peak'||r.tipo==='event')tr.className='peak';
+    const amCls=r.evAM>=30?'bh':r.evAM>=20?'bm':'bl';
+    const tag=r.tipo==='hist'?'<span class="tag tag-h">real</span>':
+      r.tipo==='holiday'?`<span class="tag tag-ho">${r.evento||'feriado'}</span>`:
+      r.tipo==='peak'||r.tipo==='event'?`<span class="tag tag-ev">${r.evento||'pico'}</span>`:
+      '<span class="tag tag-f">forecast</span>';
+    const v=n=>r.tipo==='holiday'?'—':n;
+    const dsStr=r.ds?(r.ds*100).toFixed(1)+'%':'—';
+    tr.innerHTML=`<td class="left">${String(r.d).padStart(2,'0')}/06</td>
+      <td>${r.dnom}</td>
+      <td>${r.vol?r.vol.toLocaleString('es-AR'):'—'}</td>
+      <td>${r.tipo==='hist'&&r.volProy?r.volProy.toLocaleString('es-AR'):'—'}</td>
+      <td class="${amCls}">${v(r.evAM)}</td>
+      <td>${v(r.ausAM)}</td>
+      <td>${v(r.presentes)}</td>
+      <td>${v(r.evPM)}</td>
+      <td>${v(r.rutas)}</td>
+      <td style="color:#888;font-size:10px">${v(params.GGP)}</td>
+      <td>${dsStr}</td>
+      <td>${tag}</td>`;
+    tb.appendChild(tr);
+  });
+  const ops=rows.filter(r=>r.tipo!=='holiday');
+  const labels=ops.map(r=>String(r.d)+'/6');
+  const vols=ops.map(r=>r.vol||null);
+  const proy=ops.map(r=>r.volProy||null);
+  const ams=ops.map(r=>r.evAM);
+  const pres=ops.map(r=>r.presentes);
+  const rutas=ops.map(r=>r.rutas);
+  const desvio=ops.map(r=>r.tipo==='hist'&&r.hist?r.vol-r.volProy:null);
+  const bg=ops.map(r=>r.tipo==='hist'?'#3b82c4':r.tipo==='peak'||r.tipo==='event'?'#d68910':'#5aad6b');
+  mk('chartVol',{type:'bar',data:{labels,datasets:[
+    {label:'Vol.procesado',data:vols,backgroundColor:bg,order:2},
+    {label:'Vol.proyectado',data:proy,type:'line',borderColor:'#e67e22',borderDash:[4,3],borderWidth:2,pointRadius:2,tension:0.3,order:1,backgroundColor:'transparent'}
+  ]},options:opt2('Volumen','',false)});
+  mk('chartAM',{type:'bar',data:{labels,datasets:[
+    {label:'Convocados AM',data:ams,backgroundColor:'#3b82c4',order:2},
+    {label:'Presentes',data:pres,type:'line',borderColor:'#27ae60',borderWidth:2,pointRadius:3,tension:0.3,order:1,backgroundColor:'transparent'},
+  ]},options:opt2('Personas','',false)});
+  mk('chartRutas',{type:'bar',data:{labels,datasets:[{label:'Rutas',data:rutas,backgroundColor:bg}]},options:opt2('Rutas','',false)});
+  mk('chartDesvio',{type:'bar',data:{labels,datasets:[{label:'Desvío (proc-proy)',data:desvio,backgroundColor:desvio.map(v=>v==null?'transparent':v>=0?'rgba(39,174,96,.7)':'rgba(231,76,60,.7)')}]},options:opt2('Paquetes','',false)});
+}
+
+function renderMetrics(rows){
+  const h=rows.filter(r=>r.tipo==='hist');
+  const ops=rows.filter(r=>r.tipo!=='holiday');
+  const avgVol=h.length?Math.round(h.reduce((s,r)=>s+r.vol,0)/h.length):0;
+  const avgGGP=h.filter(r=>r.ggpReal).length?
+    (h.filter(r=>r.ggpReal).reduce((s,r)=>s+r.ggpReal,0)/h.filter(r=>r.ggpReal).length).toFixed(1):'-';
+  const maxR=ops.reduce((mx,r)=>r.vol>mx.vol?r:mx,{vol:0,d:null});
+  const totalAMmes=ops.reduce((s,r)=>s+r.evAM,0);
+  const avgAus=h.length?(h.reduce((s,r)=>s+(r.ausAM/(r.evAM||1)),0)/h.length*100).toFixed(1)+'%':'-';
+  document.getElementById('metricsRow').innerHTML=`
+    <div class="metric"><div class="metric-label">Vol. prom. real</div><div class="metric-value">${avgVol.toLocaleString('es-AR')}</div><div class="metric-sub">paq/día (${h.length} días)</div></div>
+    <div class="metric"><div class="metric-label">GGP real prom.</div><div class="metric-value">${avgGGP}</div><div class="metric-sub">obj. 41</div></div>
+    <div class="metric"><div class="metric-label">Día pico</div><div class="metric-value">${maxR.d?String(maxR.d).padStart(2,'0')+'/06':'—'}</div><div class="metric-sub">${maxR.vol.toLocaleString('es-AR')} paq</div></div>
+    <div class="metric"><div class="metric-label">Total AM junio</div><div class="metric-value">${totalAMmes}</div><div class="metric-sub">convocatorias est.</div></div>
+    <div class="metric"><div class="metric-label">Ausen. AM prom.</div><div class="metric-value">${avgAus}</div><div class="metric-sub">histórico</div></div>
+    <div class="metric"><div class="metric-label">Días operativos</div><div class="metric-value">${ops.length}</div><div class="metric-sub">de 30 en el mes</div></div>`;
+}
+
+function renderAlert(rows){
+  const ops=rows.filter(r=>r.tipo!=='holiday');
+  const maxR=ops.reduce((mx,r)=>r.vol>mx.vol?r:mx,{vol:0,d:null,dot:{grandTotal:0}});
+  const semPico=rows.filter(r=>r.d>=17&&r.d<=19).reduce((s,r)=>s+r.vol,0);
+  document.getElementById('alertPanel').innerHTML=`<div class="warn-box"><strong>Alerta operativa:</strong> 
+    Pico estimado <strong>${maxR.d?String(maxR.d).padStart(2,'0')+'/06':'—'}</strong> · 
+    <strong>${maxR.vol.toLocaleString('es-AR')}</strong> paq · 
+    dotación ideal <strong>${maxR.dot?.grandTotal||'-'}</strong> personas. 
+    Semana Día del Padre (17–19/06): ~<strong>${semPico.toLocaleString('es-AR')}</strong> paq acumulados.
+  </div>`;
+  renderMetrics(rows);
+}
+
+// ── DOTACIÓN ──────────────────────────────────────────────────────────────────
+function renderDotacionTab(rows){
+  const tb=document.getElementById('dotBody');tb.innerHTML='';
+  rows.forEach(r=>{
+    const tr=document.createElement('tr');
+    if(r.tipo==='hist')tr.className='hist';
+    else if(r.tipo==='holiday'){tr.className='holiday';
+      tr.innerHTML=`<td class="left">${String(r.d).padStart(2,'0')}/06</td><td>${r.dnom}</td><td colspan="20" style="color:#ccc">${r.evento||'Sin operación'}</td>`;
+      tb.appendChild(tr);return;}
+    else if(r.tipo==='peak')tr.className='peak';
+    const dot=r.dot;
+    const f=v=>v===0?'<span style="color:#ccc">0</span>':v;
+    const isH=r.tipo==='hist';
+    const ggpColor=dot.ggpEst>=41?'#27ae60':'#e74c3c';
+    tr.innerHTML=`<td class="left">${String(r.d).padStart(2,'0')}/06${isH?'<sup style="color:#1a5fa8;font-size:8px"> H</sup>':''}</td>
+      <td>${r.dnom}</td><td style="font-weight:600">${r.vol.toLocaleString('es-AR')}</td>
+      <td class="std sep">${f(dot.std.palet)}</td><td class="std">${f(dot.std.tolv)}</td><td class="std">${f(dot.std.etiq)}</td><td class="std">${f(dot.std.pesc)}</td><td class="std">${f(dot.std.sort)}</td>
+      <td class="vol sep">${f(dot.volf.palet)}</td><td class="vol">${f(dot.volf.tolv)}</td><td class="vol">${f(dot.volf.etiq)}</td><td class="vol">${f(dot.volf.ps)}</td><td class="vol" style="font-weight:600">${dot.volTotal}</td>
+      <td class="obip sep">${f(dot.obip.palet)}</td><td class="obip">${f(dot.obip.es)}</td>
+      <td class="sep" style="color:#888">${dot.varias}</td><td style="color:#e74c3c">${dot.ausentes}</td>
+      <td class="sep" style="font-weight:700;color:#1a2e4a">${dot.grandTotal}</td>
+      <td style="color:#27ae60">${dot.presentes}</td>
+      <td style="font-weight:700;color:${ggpColor}">${dot.ggpEst}</td>`;
+    tb.appendChild(tr);
   });
 
-  function renderAll() {
-    renderForecastTab(rawData.rows || []);
-    renderDotacionTab(rawData.rows || []);
-  }
+  const hists=rows.filter(r=>r.tipo==='hist');
+  const labels=hists.map(r=>String(r.d)+'/6');
+  const reales=hists.map(r=>r.evAM);
+  const ideales=hists.map(r=>r.dot.grandTotal);
+  mk('chartDotComp',{type:'bar',data:{labels,datasets:[
+    {label:'Real',data:reales,backgroundColor:'#3b82c4'},
+    {label:'Ideal GGP=41',data:ideales,backgroundColor:'rgba(39,174,96,.7)'}
+  ]},options:opt2('Personas','',false)});
+  const rS=params.rStd||DEFAULT_PARAMS.rStd;
+  const rV=params.rVol||DEFAULT_PARAMS.rVol;
+  mk('chartStd',{type:'doughnut',data:{labels:['Paletero','Tolvero','Etiquetador','Pescador','Sorteador'],
+    datasets:[{data:[rS.palet,rS.tolv,rS.etiq,rS.pesc,rS.sort].map(v=>+(v*100).toFixed(1)),
+    backgroundColor:['#1a5fa8','#3b82c4','#5da8f5','#85c1e9','#aed6f1'],hoverOffset:4}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'right',labels:{font:{size:9},boxWidth:8}}}}});
+  mk('chartVolD',{type:'doughnut',data:{labels:['Paletero','Tolvero','Etiquetador','Pesc/Sort'],
+    datasets:[{data:[rV.palet,rV.tolv,rV.etiq,rV.ps].map(v=>+(v*100).toFixed(1)),
+    backgroundColor:['#27ae60','#52c97a','#82e0aa','#abebc6'],hoverOffset:4}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'right',labels:{font:{size:9},boxWidth:8}}}}});
 
-  function renderForecastTab(rows) {
-    const tb = document.getElementById('forecastBody');
-    tb.innerHTML = '';
-    rows.forEach(r => {
-      const diff = (r.vol || 0) - (r.volProy || 0);
-      const diffClass = diff >= 0 ? 'diff-pos' : 'diff-neg';
-      tb.insertAdjacentHTML('beforeend', `
-        <tr>
-          <td class="left" rowspan="3">${String(r.d).padStart(2,'0')}/06</td>
-          <td rowspan="3">${r.dnom}</td>
-          <td>Real</td>
-          <td>${r.vol ? r.vol.toLocaleString() : '0'}</td>
-        </tr>
-        <tr class="row-est"><td>Estimado</td><td>${r.volProy ? r.volProy.toLocaleString() : '0'}</td></tr>
-        <tr class="row-diff"><td>Dif.</td><td class="${diffClass}">${diff.toLocaleString()}</td></tr>
-      `);
-    });
-  }
+  document.getElementById('dotMetrics').innerHTML=`
+    <div class="metric"><div class="metric-label">AM ideal prom. proy.</div><div class="metric-value">${(rows.filter(r=>r.dot).reduce((s,r)=>s+r.dot.grandTotal,0)/Math.max(1,rows.filter(r=>r.dot).length)).toFixed(0)}</div><div class="metric-sub">pers/día GGP=41</div></div>
+    <div class="metric"><div class="metric-label">AM real prom.</div><div class="metric-value">${(hists.reduce((s,r)=>s+r.evAM,0)/Math.max(1,hists.length)).toFixed(1)}</div><div class="metric-sub">${hists.length} días</div></div>
+    <div class="metric"><div class="metric-label">Share Std prom.</div><div class="metric-value">${hists.length?(hists.reduce((s,r)=>s+r.hist.shareStd,0)/hists.length*100).toFixed(1):'-'}%</div><div class="metric-sub">paquetes</div></div>
+    <div class="metric"><div class="metric-label">Share Vol prom.</div><div class="metric-value">${hists.length?(hists.reduce((s,r)=>s+r.hist.shareVol,0)/hists.length*100).toFixed(1):'-'}%</div></div>
+    <div class="metric"><div class="metric-label">Share OBip prom.</div><div class="metric-value">${hists.length?(hists.reduce((s,r)=>s+r.hist.shareObip,0)/hists.length*100).toFixed(1):'-'}%</div></div>`;
+}
 
-  function renderDotacionTab(rows) {
-    const tb = document.getElementById('dotBody');
-    tb.innerHTML = '';
-    rows.forEach(r => {
-      const dotReal = r.presentes || 0;
-      const dotProy = r.dotProy || 0;
-      const diff = dotReal - dotProy;
-      const diffClass = diff >= 0 ? 'diff-pos' : 'diff-neg';
-      tb.insertAdjacentHTML('beforeend', `
-        <tr>
-          <td class="left" rowspan="3">${String(r.d).padStart(2,'0')}/06</td>
-          <td>${dotReal}</td>
-          <td>${dotProy}</td>
-          <td>${diff}</td>
-        </tr>
-        <tr class="row-est"><td>Estimado</td><td>${dotProy}</td></tr>
-        <tr class="row-diff"><td>Dif.</td><td class="${diffClass}">${diff}</td></tr>
-      `);
-    });
-  }
-
-  function switchTab(name, btn) {
-    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
-    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-    document.getElementById('tab-' + name).classList.add('active');
-    btn.classList.add('active');
-  }
-</script>
-// Lógica para exportación a CSV
-  function exportCSV() {
-    // Asegúrate de que esta función acceda a tu fuente de datos actual (allRows)
-    const rows = window.allRows ? window.allRows() : []; 
-    const hdr = 'Fecha,Dia,Vol,VolProy,EvAM,AusAM,Presentes,EvPM,Rutas,GGPest,DS,Tipo';
-    const csvContent = [hdr, ...rows.map(r => 
-      `${String(r.d).padStart(2,'0')}/06/2026,${r.dnom},${r.vol||0},${r.volProy||0},${r.evAM||0},${r.ausAM||0},${r.presentes||0},${r.evPM||0},${r.rutas||0},${r.dot?r.dot.ggpEst:0},${r.ds?r.ds:0},${r.tipo||''}`
-    )].join('\n');
-    
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = 'datos_operativos.csv';
-    link.click();
-  }
-
-  // Asegurar que al cargar la página se inicie la escucha
-  window.addEventListener('firebase-ready', () => {
-    window.fbStore.listen(data => {
-      window.rawData = data;
-      renderAll();
-    });
+// ── TIEMPOS ───────────────────────────────────────────────────────────────────
+function renderTiemposTab(rows){
+  const hists=rows.filter(r=>r.tipo==='hist'&&r.hist);
+  const tb=document.getElementById('tiempoBody');tb.innerHTML='';
+  if(!hists.length){ document.getElementById('tiempoMetrics').innerHTML=''; mk('chartProcDur',{type:'bar',data:{labels:[],datasets:[]}}); mk('chartDespDur',{type:'bar',data:{labels:[],datasets:[]}}); return; }
+  hists.forEach(r=>{
+    const h=r.hist;
+    const durProc=timeToMin(h.finProceso)-timeToMin(h.inicioProceso);
+    const durDesp=timeToMin(h.finDespacho)-timeToMin(h.inicioDespacho);
+    const tr=document.createElement('tr');tr.className='hist';
+    tr.innerHTML=`<td class="left">${String(r.d).padStart(2,'0')}/06</td><td>${r.dnom}</td>
+      <td>${r.vol.toLocaleString('es-AR')}</td>
+      <td>${h.inicioRuteo||'—'}</td><td>${h.inicioProceso||'—'}</td><td>${h.finProceso||'—'}</td>
+      <td style="font-weight:600;color:${durProc>200?'#e74c3c':durProc>160?'#d68910':'#27ae60'}">${durProc}</td>
+      <td>${h.inicioDespacho||'—'}</td><td>${h.finDespacho||'—'}</td>
+      <td style="font-weight:600;color:${durDesp>120?'#e74c3c':durDesp>60?'#d68910':'#27ae60'}">${durDesp}</td>
+      <td><span class="tag tag-h">real</span></td>`;
+    tb.appendChild(tr);
   });
 
+  const labels=hists.map(r=>String(r.d)+'/6');
+  const dursProc=hists.map(r=>{const h=r.hist;return timeToMin(h.finProceso)-timeToMin(h.inicioProceso);});
+  const dursDesp=hists.map(r=>{const h=r.hist;return timeToMin(h.finDespacho)-timeToMin(h.inicioDespacho);});
+  mk('chartProcDur',{type:'bar',data:{labels,datasets:[
+    {label:'Dur. procesamiento (min)',data:dursProc,backgroundColor:dursProc.map(v=>v>200?'#e74c3c':v>160?'#d68910':'#27ae60')}
+  ]},options:opt2('Minutos','',false)});
+  mk('chartDespDur',{type:'bar',data:{labels,datasets:[
+    {label:'Dur. despacho (min)',data:dursDesp,backgroundColor:dursDesp.map(v=>v>120?'#e74c3c':v>60?'#d68910':'#27ae60')}
+  ]},options:opt2('Minutos','',false)});
+
+  const avgProc=(dursProc.reduce((a,b)=>a+b,0)/dursProc.length).toFixed(0);
+  const avgDesp=(dursDesp.reduce((a,b)=>a+b,0)/dursDesp.length).toFixed(0);
+  document.getElementById('tiempoMetrics').innerHTML=`
+    <div class="metric"><div class="metric-label">Dur. proc. prom.</div><div class="metric-value">${avgProc}</div><div class="metric-sub">minutos</div></div>
+    <div class="metric"><div class="metric-label">Proc. máx.</div><div class="metric-value">${Math.max(...dursProc)}</div><div class="metric-sub">minutos</div></div>
+    <div class="metric"><div class="metric-label">Proc. mín.</div><div class="metric-value">${Math.min(...dursProc)}</div><div class="metric-sub">minutos</div></div>
+    <div class="metric"><div class="metric-label">Dur. desp. prom.</div><div class="metric-value">${avgDesp}</div><div class="metric-sub">minutos</div></div>
+    <div class="metric"><div class="metric-label">Desp. máx.</div><div class="metric-value">${Math.max(...dursDesp)}</div><div class="metric-sub">minutos</div></div>
+    <div class="metric"><div class="metric-label">Inicio proc. prom.</div><div class="metric-value">${minToHM(hists.reduce((s,r)=>s+timeToMin(r.hist.inicioProceso),0)/hists.length)}</div><div class="metric-sub">hora</div></div>`;
+}
+
+// ── PRODUCTIVIDAD ─────────────────────────────────────────────────────────────
+function renderProductividadTab(rows){
+  const h=rows.filter(r=>r.tipo==='hist');
+  if(!h.length){ document.getElementById('prodMetrics').innerHTML=''; document.getElementById('shareBody').innerHTML=''; return; }
+  const labels=h.map(r=>String(r.d)+'/6');
+  const ggpR=h.map(r=>r.ggpReal);
+  const ggpC=h.map(r=>r.ggpCliente);
+  const gnp=h.map(r=>r.gnp);
+  const ds=h.map(r=>+(r.ds*100).toFixed(2));
+  const aus=h.map(r=>+(r.ausAM/(r.evAM||1)*100).toFixed(1));
+
+  mk('chartGGP',{type:'bar',data:{labels,datasets:[
+    {label:'GGP real',data:ggpR,backgroundColor:ggpR.map(g=>g>=41?'rgba(39,174,96,.8)':'rgba(231,76,60,.8)'),order:2},
+    {label:'Objetivo 41',data:labels.map(()=>41),type:'line',borderColor:'#1a2e4a',borderDash:[5,3],borderWidth:2,pointRadius:0,order:1,backgroundColor:'transparent'}
+  ]},options:opt2('GGP','',false)});
+  mk('chartGGPComp',{type:'line',data:{labels,datasets:[
+    {label:'GGP cliente',data:ggpC,borderColor:'#e67e22',backgroundColor:'rgba(230,126,34,.1)',pointRadius:4,tension:0.3},
+    {label:'GGP real',data:ggpR,borderColor:'#1a5fa8',backgroundColor:'rgba(26,95,168,.1)',pointRadius:4,tension:0.3},
+    {label:'GNP',data:gnp,borderColor:'#27ae60',backgroundColor:'rgba(39,174,96,.1)',pointRadius:4,tension:0.3},
+  ]},options:opt2('GGP/GNP','',false)});
+  mk('chartDS',{type:'line',data:{labels,datasets:[
+    {label:'DS%',data:ds,borderColor:'#27ae60',backgroundColor:'rgba(39,174,96,.1)',pointRadius:4,fill:true,tension:0.3},
+    {label:'Objetivo 98%',data:labels.map(()=>98),borderColor:'#e74c3c',borderDash:[4,3],borderWidth:2,pointRadius:0,backgroundColor:'transparent'}
+  ]},options:opt2('DS (%)','',false)});
+  mk('chartAus',{type:'bar',data:{labels,datasets:[
+    {label:'Ausentismo AM %',data:aus,backgroundColor:aus.map(v=>v>5?'#e74c3c':v>2?'#d68910':'#27ae60')}
+  ]},options:opt2('Ausentismo %','',false)});
+
+  const tb=document.getElementById('shareBody');tb.innerHTML='';
+  h.forEach(r=>{const tr=document.createElement('tr');tr.className='hist';
+    const hi=r.hist;
+    tr.innerHTML=`<td class="left">${String(r.d).padStart(2,'0')}/06</td><td>${r.dnom}</td>
+      <td>${r.vol.toLocaleString('es-AR')}</td>
+      <td style="color:#1a5fa8;font-weight:600">${(hi.shareStd*100).toFixed(1)}%</td>
+      <td style="color:#2d7a27;font-weight:600">${(hi.shareVol*100).toFixed(1)}%</td>
+      <td style="color:#8a5200;font-weight:600">${(hi.shareObip*100).toFixed(1)}%</td>
+      <td style="color:#1a5fa8">${Math.round(r.vol*hi.shareStd)}</td>
+      <td style="color:#2d7a27">${Math.round(r.vol*hi.shareVol)}</td>
+      <td style="color:#8a5200">${Math.round(r.vol*hi.shareObip)}</td>
+      <td>${hi.ggpCliente?.toFixed(2)||'—'}</td>
+      <td style="color:${hi.ggpReal>=41?'#27ae60':'#e74c3c'};font-weight:700">${hi.ggpReal?.toFixed(2)||'—'}</td>
+      <td>${hi.gnp?.toFixed(2)||'—'}</td>
+      <td style="color:${hi.ds>=0.98?'#27ae60':'#e74c3c'}">${(hi.ds*100).toFixed(1)}%</td>`;
+    tb.appendChild(tr);
+  });
+
+  const avgGGPr=h.reduce((s,r)=>s+r.ggpReal,0)/h.length;
+  const avgGGPc=h.reduce((s,r)=>s+r.ggpCliente,0)/h.length;
+  const avgGNP=h.reduce((s,r)=>s+r.gnp,0)/h.length;
+  const avgDS=h.reduce((s,r)=>s+r.ds,0)/h.length;
+  const avgAus=h.reduce((s,r)=>s+r.ausAM/(r.evAM||1),0)/h.length*100;
+  document.getElementById('prodMetrics').innerHTML=`
+    <div class="metric"><div class="metric-label">GGP real prom.</div><div class="metric-value" style="color:${avgGGPr>=41?'#27ae60':'#e74c3c'}">${avgGGPr.toFixed(1)}</div><div class="metric-sub">obj. 41</div></div>
+    <div class="metric"><div class="metric-label">GGP cliente prom.</div><div class="metric-value">${avgGGPc.toFixed(1)}</div><div class="metric-sub">reportado cliente</div></div>
+    <div class="metric"><div class="metric-label">GNP prom.</div><div class="metric-value">${avgGNP.toFixed(1)}</div><div class="metric-sub">neto</div></div>
+    <div class="metric"><div class="metric-label">DS% prom.</div><div class="metric-value" style="color:${avgDS>=0.98?'#27ae60':'#e74c3c'}">${(avgDS*100).toFixed(1)}%</div><div class="metric-sub">obj. 98%</div></div>
+    <div class="metric"><div class="metric-label">Ausentismo AM prom.</div><div class="metric-value" style="color:${avgAus>5?'#e74c3c':'#27ae60'}">${avgAus.toFixed(1)}%</div><div class="metric-sub">real histórico</div></div>
+    <div class="metric"><div class="metric-label">Diferencia GGP real–obj</div><div class="metric-value" style="color:${avgGGPr>=41?'#27ae60':'#e74c3c'}">${(avgGGPr-41).toFixed(1)}</div><div class="metric-sub">prom. histórico</div></div>`;
+}
+
+// ── HISTÓRICO TAB ─────────────────────────────────────────────────────────────
+function renderHistTab(){
+  const tb=document.getElementById('histBody');tb.innerHTML='';
+  histData.forEach((h,i)=>{
+    const dow=new Date(h.d+'T00:00:00').getDay();const dnom=DIAS[dow];
+    const tr=document.createElement('tr');
+    tr.innerHTML=`<td>${h.d.split('-')[2]}/${h.d.split('-')[1]}</td><td>${dnom}</td>
+      <td><input style="width:60px" value="${h.volProy||''}" onchange="histData[${i}].volProy=+this.value;saveAll()"></td>
+      <td><input style="width:60px" value="${h.vol}" onchange="histData[${i}].vol=+this.value;saveAll()"></td>
+      <td><input style="width:45px" value="${h.evAM}" onchange="histData[${i}].evAM=+this.value;saveAll()"></td>
+      <td><input style="width:35px" value="${h.ausAM||0}" onchange="histData[${i}].ausAM=+this.value;saveAll()"></td>
+      <td><input style="width:35px" value="${h.evPM}" onchange="histData[${i}].evPM=+this.value;saveAll()"></td>
+      <td><input style="width:40px" value="${h.rutas}" onchange="histData[${i}].rutas=+this.value;saveAll()"></td>
+      <td><input style="width:45px" value="${h.ggpCliente||''}" onchange="histData[${i}].ggpCliente=+this.value;saveAll()"></td>
+      <td><input style="width:45px" value="${h.ggpReal||''}" onchange="histData[${i}].ggpReal=+this.value;saveAll()"></td>
+      <td><input style="width:45px" value="${h.gnp||''}" onchange="histData[${i}].gnp=+this.value;saveAll()"></td>
+      <td><input style="width:45px" value="${h.ds||''}" onchange="histData[${i}].ds=+this.value;saveAll()"></td>
+      <td><input style="width:45px" value="${(h.shareStd*100).toFixed(1)}" onchange="histData[${i}].shareStd=+this.value/100;saveAll()"></td>
+      <td><input style="width:40px" value="${(h.shareVol*100).toFixed(1)}" onchange="histData[${i}].shareVol=+this.value/100;saveAll()"></td>
+      <td><input style="width:40px" value="${(h.shareObip*100).toFixed(1)}" onchange="histData[${i}].shareObip=+this.value/100;saveAll()"></td>
+      <td><button class="btn btn-danger" style="font-size:10px;padding:2px 6px" onclick="deleteHist(${i})">✕</button></td>`;
+    tb.appendChild(tr);
+  });
+}
+function addHistRow(){
+  const fecha=prompt('Fecha (YYYY-MM-DD):');
+  if(!fecha||!/^\d{4}-\d{2}-\d{2}$/.test(fecha))return alert('Formato inválido.');
+  histData.push({d:fecha,volProy:0,vol:0,volRut:0,rutas:0,evAM:0,ausAM:0,evPM:0,
+    ggpCliente:null,ggpReal:null,gnp:null,ds:0.98,backlog:0,
+    inicioRuteo:'',inicioProceso:'',finProceso:'',inicioDespacho:'08:00',finDespacho:'',
+    shareStd:params.shareStd,shareVol:params.shareVol,shareObip:params.shareObip,
+    std:{palet:0,tolv:0,etiq:0,pesc:0,sort:0},
+    volf:{palet:0,tolv:0,etiq:0,pesc:0,sort:0,ps:0},
+    obip:{palet:0,es:0},varias:0});
+  saveAll();renderHistTab();compute();
+}
+function deleteHist(i){if(!confirm('¿Eliminar?'))return;histData.splice(i,1);saveAll();renderHistTab();compute();}
+
+// ── EVENTOS TAB ───────────────────────────────────────────────────────────────
+function renderEventosTab(){
+  const tb=document.getElementById('eventosBody');tb.innerHTML='';
+  eventos.forEach((ev,i)=>{
+    const tipoTag={'holiday':'<span class="tag tag-ho">Feriado</span>','event':'<span class="tag tag-ev">Evento</span>',
+      'peak':'<span class="tag" style="background:#fff3cd;color:#856404">Pico</span>',
+      'low':'<span class="tag" style="background:#e8f8ee;color:#27ae60">Baja</span>'}[ev.tipo]||ev.tipo;
+    const tr=document.createElement('tr');
+    tr.innerHTML=`<td class="left">${ev.fecha.split('-')[2]}/${ev.fecha.split('-')[1]}</td>
+      <td class="left">${ev.desc}</td><td>${ev.factor===0?'Sin op.':'×'+ev.factor}</td>
+      <td>${tipoTag}</td>
+      <td><input type="checkbox" ${ev.activo?'checked':''} onchange="eventos[${i}].activo=this.checked;saveAll();compute();renderEventosTab()"></td>
+      <td><button class="btn btn-outline" style="font-size:10px;padding:2px 6px" onclick="editEvento(${i})">✎</button>
+          <button class="btn btn-danger" style="font-size:10px;padding:2px 6px;margin-left:4px" onclick="deleteEvento(${i})">✕</button></td>`;
+    tb.appendChild(tr);
+  });
+}
+function saveEvento(){
+  const fecha=document.getElementById('evFecha').value;
+  const desc=document.getElementById('evDesc').value.trim();
+  const factor=parseFloat(document.getElementById('evFactor').value);
+  const tipo=document.getElementById('evTipo').value;
+  if(!fecha||!desc)return alert('Completá fecha y descripción.');
+  const obj={fecha,desc,factor,tipo,activo:true};
+  if(editEvIdx>=0)eventos[editEvIdx]=obj;else eventos.push(obj);
+  eventos.sort((a,b)=>a.fecha.localeCompare(b.fecha));
+  editEvIdx=-1;saveAll();renderEventosTab();compute();clearEventoForm();
+}
+function editEvento(i){editEvIdx=i;const ev=eventos[i];
+  document.getElementById('evFecha').value=ev.fecha;document.getElementById('evDesc').value=ev.desc;
+  document.getElementById('evFactor').value=ev.factor;document.getElementById('evTipo').value=ev.tipo;}
+function deleteEvento(i){if(!confirm('¿Eliminar?'))return;eventos.splice(i,1);saveAll();renderEventosTab();compute();}
+function addEvento(){editEvIdx=-1;clearEventoForm();}
+function clearEventoForm(){['evFecha','evDesc'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('evFactor').value='1.00';document.getElementById('evTipo').value='event';}
+
+// ── UTILS ─────────────────────────────────────────────────────────────────────
+function opt2(y1,y2,legend){
+  return{responsive:true,maintainAspectRatio:false,
+    plugins:{legend:{display:legend!==false,labels:{font:{size:10},boxWidth:10}}},
+    scales:{x:{ticks:{font:{size:9},maxRotation:45}},y:{ticks:{font:{size:10}},title:{display:!!y1,text:y1,font:{size:10}}}}};
+}
+function mk(id,cfg){
+  if(charts[id])charts[id].destroy();
+  const el=document.getElementById(id);if(!el)return;
+  charts[id]=new Chart(el,cfg);
+}
+function switchTab(name,btn){
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.getElementById('tab-'+name).classList.add('active');
+  if(btn)btn.classList.add('active');
+  if(name==='historico')renderHistTab();
+  if(name==='eventos')renderEventosTab();
+  if(name==='parametros'){updateUI();buildFactDiaUI();}
+}
+function exportCSV(){
+  const rows=allRows();
+  const hdr='Fecha,Dia,Vol,VolProy,EvAM,AusAM,Presentes,EvPM,Rutas,GGPest,DS,Tipo,StdPalet,StdTolv,StdEtiq,StdPesc,StdSort,VolPalet,VolTolv,VolEtiq,VolPS,ObipPalet,ObipES,Varias,TotalConv';
+  const lines=rows.map(r=>{const d=r.dot;
+    return[String(r.d).padStart(2,'0')+'/06/2026',r.dnom,r.vol,r.volProy,r.evAM,r.ausAM,r.presentes,r.evPM,r.rutas,
+      d?d.ggpEst:'',r.ds?(r.ds*100).toFixed(1):'',r.tipo,
+      d?d.std.palet:'',d?d.std.tolv:'',d?d.std.etiq:'',d?d.std.pesc:'',d?d.std.sort:'',
+      d?d.volf.palet:'',d?d.volf.tolv:'',d?d.volf.etiq:'',d?d.volf.ps:'',
+      d?d.obip.palet:'',d?d.obip.es:'',d?d.varias:'',d?d.grandTotal:''].join(',');
+  });
+  const blob=new Blob([[hdr,...lines].join('\n')],{type:'text/csv;charset=utf-8;'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='forecast_junio2026.csv';a.click();
+}
+
+// ── INIT ──────────────────────────────────────────────────────────────────────
+window.addEventListener('firebase-ready', initFirebaseSync);
+// Fallback: si por algo no llega el evento en 4s, igual renderizamos con datos locales
+setTimeout(()=>{ if(!fbReady){ updateUI(); buildFactDiaUI(); compute(); if(!window.fbStore) setSync('bad','Sin conexión a Firebase'); } }, 4000);
 </script>
 </body>
 </html>
