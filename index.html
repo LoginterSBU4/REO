@@ -718,13 +718,15 @@ function compute(){
 // ── FORECAST ──────────────────────────────────────────────────────────────────
 function renderForecastTab(rows){
   const tb=document.getElementById('forecastBody');tb.innerHTML='';
-  rows.forEach(r=>{
-    const tr=document.createElement('tr');
+  rows.forEach(r => {
+    const tr = document.createElement('tr');
     if(r.tipo==='hist')tr.className='hist';
     else if(r.tipo==='holiday')tr.className='holiday';
     else if(r.tipo==='peak'||r.tipo==='event')tr.className='peak';
     const amCls=r.evAM>=30?'bh':r.evAM>=20?'bm':'bl';
     const tag=r.tipo==='hist'?'<span class="tag tag-h">real</span>':
+         const diff = (r.vol || 0) - (r.volProy || 0);
+    const diffClass = diff >= 0 ? 'diff-pos' : 'diff-neg';
       r.tipo==='holiday'?`<span class="tag tag-ho">${r.evento||'feriado'}</span>`:
       r.tipo==='peak'||r.tipo==='event'?`<span class="tag tag-ev">${r.evento||'pico'}</span>`:
       '<span class="tag tag-f">forecast</span>';
@@ -739,6 +741,10 @@ function renderForecastTab(rows){
       <td>${v(r.presentes)}</td>
       <td>${v(r.evPM)}</td>
       <td>${v(r.rutas)}</td>
+      <td class="left" rowspan="3">${String(r.d).padStart(2,'0')}/06</td>
+        <td>Real</td>
+        <td>${r.vol ? r.vol.toLocaleString('es-AR') : '—'}</td>
+        <td rowspan="3">${r.dnom}</td>
       <td style="color:#888;font-size:10px">${v(params.GGP)}</td>
       <td>${dsStr}</td>
       <td>${tag}</td>`;
@@ -751,6 +757,8 @@ function renderForecastTab(rows){
   const ams=ops.map(r=>r.evAM);
   const pres=ops.map(r=>r.presentes);
   const rutas=ops.map(r=>r.rutas);
+     const trEst = `<tr class="row-est"><td>Estimado</td><td>${r.volProy ? r.volProy.toLocaleString('es-AR') : '—'}</td></tr>`;
+    const trDiff = `<tr class="row-diff"><td>Dif.</td><td class="${diffClass}">${diff.toLocaleString('es-AR')}</td></tr>`;
   const desvio=ops.map(r=>r.tipo==='hist'&&r.hist?r.vol-r.volProy:null);
   const bg=ops.map(r=>r.tipo==='hist'?'#3b82c4':r.tipo==='peak'||r.tipo==='event'?'#d68910':'#5aad6b');
   mk('chartVol',{type:'bar',data:{labels,datasets:[
@@ -819,6 +827,10 @@ function renderDotacionTab(rows){
       <td class="sep" style="font-weight:700;color:#1a2e4a">${dot.grandTotal}</td>
       <td style="color:#27ae60">${dot.presentes}</td>
       <td style="font-weight:700;color:${ggpColor}">${dot.ggpEst}</td>`;
+       .row-est { font-size: 10px; color: #666; background-color: #fafafa !important; }
+.row-diff { font-size: 9px; font-weight: bold; }
+.diff-pos { color: #27ae60; } /* Verde para positivo */
+.diff-neg { color: #e74c3c; } /* Rojo para negativo */
     tb.appendChild(tr);
   });
 
