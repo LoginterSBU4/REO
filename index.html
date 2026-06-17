@@ -2,78 +2,88 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>Forecast Operativo Inteligente</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Logistics Ops Dashboard 2026</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-
-        const firebaseConfig = {
-            apiKey: "AIzaSyCZCZye_jKxHYpfMFaOwrX4eWv8mRuAQs0",
-  authDomain: "reosbu4-50cda.firebaseapp.com",
-  projectId: "reosbu4-50cda",
-  storageBucket: "reosbu4-50cda.firebasestorage.app",
-  messagingSenderId: "657717067014",
-  appId: "1:657717067014:web:f3ddfeb0dfe06ef923f287"
-        };
-
-        const app = initializeApp(firebaseConfig);
-        const db = getFirestore(app);
-
-        // Almacenar estado global
-        window.saveData = async (data) => {
-            await setDoc(doc(db, "modelos", "junio_2026"), {
-                payload: data,
-                updated: new Date().toISOString()
-            });
-        };
-
-        // Escucha en tiempo real
-        onSnapshot(doc(db, "modelos", "junio_2026"), (doc) => {
-            if (doc.exists()) window.appData = doc.data().payload;
-            render();
-        });
-    </script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        .active-tab { border-bottom: 3px solid #3b82f6; color: #3b82f6; }
+        .card { background: white; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
+    </style>
 </head>
-<body class="bg-gray-100 p-4">
-    <header class="bg-blue-900 text-white p-4 rounded shadow-lg mb-6 flex justify-between">
-        <h1 class="text-xl font-bold">Forecast Operativo - Junio 2026</h1>
-        <div id="status" class="text-xs italic text-blue-300">Conectando a Firebase...</div>
-    </header>
+<body class="bg-slate-50 text-slate-800">
 
-    <div class="flex gap-4 mb-6">
-        <button onclick="tab('input')" class="px-4 py-2 bg-white rounded shadow">Carga de Datos</button>
-        <button onclick="tab('forecast')" class="px-4 py-2 bg-white rounded shadow">Forecast & KPIs</button>
-        <button onclick="tab('params')" class="px-4 py-2 bg-white rounded shadow">Configuración</button>
+<nav class="bg-slate-900 text-white p-4 flex justify-between items-center shadow-lg">
+    <h1 class="text-xl font-bold flex items-center gap-2"><i data-lucide="package"></i> Logistics Ops 2026</h1>
+    <div id="date-display" class="text-sm opacity-75">Junio 2026</div>
+</nav>
+
+<div class="p-6">
+    <!-- Tabs -->
+    <div class="flex gap-6 border-b border-slate-200 mb-6">
+        <button onclick="switchTab('forecast')" class="pb-2 font-medium flex items-center gap-2 hover:text-blue-500 transition"><i data-lucide="trending-up"></i> Forecast</button>
+        <button onclick="switchTab('dotacion')" class="pb-2 font-medium flex items-center gap-2 hover:text-blue-500 transition"><i data-lucide="users"></i> Dotación Ideal</button>
+        <button onclick="switchTab('historico')" class="pb-2 font-medium flex items-center gap-2 hover:text-blue-500 transition"><i data-lucide="history"></i> Histórico</button>
     </div>
 
-    <div id="content" class="bg-white p-6 rounded shadow">
-        <!-- Contenido dinámico -->
+    <!-- Contenido -->
+    <div id="content" class="min-h-[500px]">
+        <!-- Aquí se renderizarán los componentes dinámicamente -->
+        <div id="view-forecast" class="space-y-6">
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4" id="stats-container"></div>
+            <div class="card p-4"><canvas id="chartMain" height="300"></canvas></div>
+        </div>
     </div>
+</div>
 
-    <script>
-        window.appData = {
-            params: { ggp: 45, spr: 120, shareStandard: 0.7 },
-            history: [] // Carga de días reales
-        };
+<script>
+    // Inicialización de iconos
+    lucide.createIcons();
 
-        function render() {
-            const content = document.getElementById('content');
-            // Lógica de renderizado según tab
-            content.innerHTML = `<h2 class="text-lg font-bold">Bienvenido al Modelo</h2><p>Firebase conectado y listo para procesar volúmenes.</p>`;
+    // Estado básico del sistema
+    const state = {
+        targetGGP: 41,
+        data: Array.from({length: 30}, (_, i) => ({
+            day: i + 1,
+            vol: Math.floor(Math.random() * 5000) + 10000,
+            ggp: 40 + Math.random() * 5
+        }))
+    };
+
+    function switchTab(tab) {
+        const container = document.getElementById('content');
+        if(tab === 'dotacion') {
+            renderDotacionIdeal();
+        } else {
+            container.innerHTML = `<div class="card p-6"><h2>Módulo ${tab.toUpperCase()} en construcción...</h2></div>`;
         }
+    }
 
-        // Estacionalidad lógica
-        function applySeasonality(vol, date) {
-            // Ejemplo: +20% previo al día del padre
-            if (date >= 16 && date <= 19) return vol * 1.2;
-            // Feriado 15
-            if (date === 15) return 0;
-            return vol;
-        }
+    function renderDotacionIdeal() {
+        const html = `
+            <div class="card p-6">
+                <h2 class="text-xl font-bold mb-4 flex items-center gap-2"><i data-lucide="calculator"></i> Calculadora Dotación Ideal</h2>
+                <table class="w-full text-left">
+                    <thead class="bg-slate-100"><tr><th class="p-3">Día</th><th class="p-3">Volumen Proy.</th><th class="p-3">Dotación (GGP ${state.targetGGP})</th></tr></thead>
+                    <tbody>
+                        ${state.data.map(d => `
+                            <tr class="border-b">
+                                <td class="p-3">${d.day}/06</td>
+                                <td class="p-3 font-mono">${d.vol.toLocaleString()}</td>
+                                <td class="p-3 font-bold text-blue-600">${Math.round(d.vol / state.targetGGP)} pax</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        `;
+        document.getElementById('content').innerHTML = html;
+        lucide.createIcons();
+    }
 
-        function tab(t) { console.log("Cambiando a:", t); }
-    </script>
+    // Inicialización visual
+    switchTab('forecast');
+</script>
 </body>
 </html>
