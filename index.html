@@ -589,8 +589,8 @@ function calibrateFromHist(hist){
   const paqRuta=Math.round(h.reduce((s,r)=>s+(r.volRut||r.vol)/r.rutas,0)/h.length);
   const midDays=h.filter(r=>r.vol>5000&&r.vol<12000);
   const volBase=midDays.length?Math.round(midDays.reduce((s,r)=>s+r.vol,0)/midDays.length):7500;
-  const factDia={Dom:0.82,Lun:1.08,Mar:1.05,Mié:1.02,Jue:0.97,Vie:0.88,Sáb:0.78};
-  h.forEach(r=>{const dow=new Date(r.d+'T00:00').getDay();const dn=DIAS[dow];
+  const factDia={Lun:1.08,Mar:1.05,Mié:1.02,Jue:0.97,Vie:0.88,Sáb:0.78};
+  h.forEach(r=>{const dow=new Date(r.d+'T00:00').getDay();if(dow===0)return;const dn=DIAS[dow];
     if(factDia[dn]!==undefined)factDia[dn]=+((factDia[dn]*0.4+r.vol/volBase*0.6).toFixed(3));
   });
   const rStd={palet:0,tolv:0,etiq:0,pesc:0,sort:0};
@@ -615,7 +615,7 @@ function calibrateFromHist(hist){
     dsObjetivo:0.98,factorRuteo:1.003,backlogProm:0};
 }
 const DEFAULT_PARAMS_FALLBACK={shareStd:0.837,shareVol:0.137,shareObip:0.025,ausAM:2,paqRuta:120,volBase:7500,
-  factDia:{Dom:0.82,Lun:1.08,Mar:1.05,Mié:1.02,Jue:0.97,Vie:0.88,Sáb:0.78},
+  factDia:{Lun:1.08,Mar:1.05,Mié:1.02,Jue:0.97,Vie:0.88,Sáb:0.78},
   rStd:{palet:0.08,tolv:0.145,etiq:0.215,pesc:0.225,sort:0.25},
   rVol:{palet:0.12,tolv:0.185,etiq:0.185,ps:0.51},rObip:{palet:0.3,es:0.7},
   avgDS:0.98,umbralPM1:8500,umbralPM2:9500,GGP:41,cobAM:95,
@@ -832,7 +832,11 @@ function computeDay(d,dow){
 
 function allRows(){
   const rows=[];
-  for(let d=1;d<=30;d++){const dow=new Date(2026,5,d).getDay();rows.push(computeDay(d,dow));}
+  for(let d=1;d<=30;d++){
+    const dow=new Date(2026,5,d).getDay();
+    if(dow===0) continue; // Domingo — día no operativo
+    rows.push(computeDay(d,dow));
+  }
   return rows;
 }
 
