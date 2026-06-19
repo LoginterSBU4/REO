@@ -1588,10 +1588,21 @@ function exportCSV(){
 // calibraciones vigentes del modelo (params.*), sin tocar ningún otro cálculo
 // del resto de las pestañas.
 function calcDespachoTandas(rutas){
-  const POSICIONES=106, MIN_POR_TANDA=23;
+  const POSICIONES=106, MIN_POR_TANDA=23, MIN_POSICIONAMIENTO=2, CAMIONETAS_POR_MIN=3;
   const tandas=Math.max(1,Math.ceil(rutas/POSICIONES));
-  const durDespEst=tandas*MIN_POR_TANDA;
-  return{tandas,durDespEst};
+  // Camionetas que entran en la última tanda (puede ser parcial)
+  const camionetasUltimaTanda = rutas - (tandas-1)*POSICIONES;
+  // Tiempo de ingreso (llenado) de una tanda llena: la última camioneta de las 106 entra en el minuto 106/3
+  const tiempoLlenadoTandaLlena = POSICIONES / CAMIONETAS_POR_MIN;
+  const tiempoLlenadoUltimaTanda = camionetasUltimaTanda / CAMIONETAS_POR_MIN;
+  // Duración de UNA tanda completa: tiempo en que entra la última + 2 min posicionamiento + 23 min carga
+  const durTandaLlena = tiempoLlenadoTandaLlena + MIN_POSICIONAMIENTO + MIN_POR_TANDA;
+  const durUltimaTanda = tiempoLlenadoUltimaTanda + MIN_POSICIONAMIENTO + MIN_POR_TANDA;
+  // Tandas completas anteriores a la última se solapan en el ingreso, así que el total
+  // es: (tandas-1) tandas llenas en secuencia + la última tanda (completa o parcial)
+  const durDespEst = Math.round((tandas-1)*durTandaLlena + durUltimaTanda);
+  return{tandas,durDespEst,tiempoLlenadoTandaLlena:Math.round(tiempoLlenadoTandaLlena*10)/10,
+    minPosicionamiento:MIN_POSICIONAMIENTO,camionetasPorMin:CAMIONETAS_POR_MIN};
 }
 
 function calcHorariosSimulados(vol,rutas){
@@ -1713,7 +1724,7 @@ function runSimulador(){
           </tr>
         </tbody>
       </table></div>
-      <span class="hint">Cálculo hacia atrás desde la apertura ideal (08:00): fin de proceso + 15 min de margen de búsqueda = inicio de despacho. La duración de proceso usa la regresión volumen→duración calibrada con el historial real; el inicio de ruteo se ubica ${horarios.offsetRuteoProceso} min antes del inicio de proceso (offset promedio histórico real). El despacho dura ${horarios.tandas} tanda(s) × 23 min (106 posiciones simultáneas).</span>
+      <span class="hint">Cálculo hacia atrás desde la apertura ideal (08:00): fin de proceso + 15 min de margen de búsqueda = inicio de despacho. La duración de proceso usa la regresión volumen→duración calibrada con el historial real; el inicio de ruteo se ubica ${horarios.offsetRuteoProceso} min antes del inicio de proceso (offset promedio histórico real). El despacho considera el ingreso de camionetas a razón de ${horarios.camionetasPorMin}/min hasta llenar las 106 posiciones (~${horarios.tiempoLlenadoTandaLlena} min por tanda llena), + ${horarios.minPosicionamiento} min de posicionamiento, + 23 min de carga por unidad, en ${horarios.tandas} tanda(s).</span>
     </div>
   `;
 }
