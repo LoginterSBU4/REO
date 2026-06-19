@@ -162,6 +162,7 @@ tr.peak td{background:#fffbee}
     <button class="tab" onclick="switchTab('parametros',this)">⚙️ Parámetros</button>
     <button class="tab" onclick="switchTab('historico',this)">📅 Histórico</button>
     <button class="tab" onclick="switchTab('eventos',this)">🗓 Eventos</button>
+    <button class="tab" onclick="switchTab('simulador',this)">🎯 Simulador</button>
   </div>
 
   <!-- FORECAST -->
@@ -555,6 +556,27 @@ tr.peak td{background:#fffbee}
         <button class="btn btn-outline" onclick="clearEventoForm()">Limpiar</button>
       </div>
     </div>
+  </div>
+
+  <!-- SIMULADOR -->
+  <div id="tab-simulador" class="panel">
+    <div class="info-box">Modelo <strong>top-down</strong>: ingresá solo el volumen esperado a procesar y el simulador deriva, con las calibraciones reales del historial, toda la dotación por flujo y puesto, las camionetas necesarias y el cronograma horario ideal para abrir despacho a las 08:00 (máx. 08:15).</div>
+
+    <div class="card">
+      <div class="card-title">📥 Dato de entrada</div>
+      <div class="reg-form">
+        <div class="form-group" style="max-width:260px">
+          <label>Volumen esperado a procesar (paquetes)</label>
+          <input type="number" id="simVol" step="50" placeholder="Ej: 8500" oninput="runSimulador()">
+        </div>
+        <div class="form-group">
+          <button class="btn btn-primary" onclick="runSimulador()" style="margin-top:18px">🔮 Simular</button>
+        </div>
+      </div>
+      <span class="hint">El resto de las variables (GGP, shares, ratios por puesto, capacidad por ruta, duraciones de proceso/despacho) se toman automáticamente de la calibración vigente del modelo.</span>
+    </div>
+
+    <div id="simResultados"></div>
   </div>
 </div>
 
@@ -1550,6 +1572,141 @@ function exportCSV(){
   });
   const blob=new Blob([[hdr,...lines].join('\n')],{type:'text/csv;charset=utf-8;'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='forecast_junio2026.csv';a.click();
+}
+
+// ── SIMULADOR TOP-DOWN (pestaña Simulador) ───────────────────────────────────
+// Toma SOLO el volumen esperado y deriva todo el plan operativo usando las
+// calibraciones vigentes del modelo (params.*), sin tocar ningún otro cálculo
+// del resto de las pestañas.
+function calcDespachoTandas(rutas){
+  const POSICIONES=106, MIN_POR_TANDA=23;
+  const tandas=Math.max(1,Math.ceil(rutas/POSICIONES));
+  const durDespEst=tandas*MIN_POR_TANDA;
+  return{tandas,durDespEst};
+}
+
+function calcHorariosSimulados(vol,rutas){
+  // Apertura ideal de despacho: 08:00, margen máx aceptable 08:15
+  const APERTURA_IDEAL=8*60;       // 480
+  const APERTURA_MAX=8*60+15;      // 495
+  const MARGEN_BUSQUEDA=15;        // min
+
+  // Duración de proceso estimada por regresión vol→duración (misma que en pestaña Tiempos)
+  const hists=histData.filter(h=>h.vol>0 && h.inicioProceso && h.finProceso);
+  const ptsProc=hists.map(h=>{const dur=timeToMin(h.finProceso)-timeToMin(h.inicioProceso);return{vol:h.vol,dur};}).filter(p=>isFinite(p.dur));
+  const regProc=regresionLineal(ptsProc,'vol','dur');
+  const durProcEst=Math.max(30,Math.round(regProc.slope*vol+regProc.intercept));
+
+  // Despacho estimado por modelo de tandas (106 posiciones × 23 min)
+  const {tandas,durDespEst}=calcDespachoTandas(rutas);
+
+  // Offset promedio real entre inicio de ruteo e inicio de proceso (~16 min antes, según historial)
+  const hOffset=histData.filter(h=>h.inicioRuteo&&h.inicioProceso)
+    .map(h=>timeToMin(h.inicioProceso)-timeToMin(h.inicioRuteo)).filter(v=>isFinite(v)&&v>=0);
+  const offsetRuteoProceso=hOffset.length?Math.round(hOffset.reduce((a,b)=>a+b,0)/hOffset.length):16;
+
+  // Cálculo hacia atrás desde la apertura ideal (08:00):
+  // finProceso + margen búsqueda (15) = inicioDespacho = APERTURA_IDEAL
+  const finProcesoEst=APERTURA_IDEAL-MARGEN_BUSQUEDA;
+  const inicioProcesoEst=finProcesoEst-durProcEst;
+  const inicioRuteoEst=inicioProcesoEst-offsetRuteoProceso;
+  const inicioDespachoEst=APERTURA_IDEAL;
+  const finDespachoEst=inicioDespachoEst+durDespEst;
+
+  // Chequeo de cumplimiento de apertura máxima (08:15)
+  const cumpleApertura=inicioDespachoEst<=APERTURA_MAX;
+
+  return{inicioRuteoEst,inicioProcesoEst,finProcesoEst,durProcEst,
+    inicioDespachoEst,finDespachoEst,durDespEst,tandas,offsetRuteoProceso,
+    margenBusqueda:MARGEN_BUSQUEDA,cumpleApertura,APERTURA_IDEAL,APERTURA_MAX};
+}
+
+function runSimulador(){
+  const vol=+document.getElementById('simVol').value;
+  const cont=document.getElementById('simResultados');
+  if(!vol||vol<=0){ cont.innerHTML=''; return; }
+
+  const dot=calcDotacion(vol);
+  const rutas=Math.ceil(vol*(params.factorRuteo||1.003)/params.paqRuta);
+  const spr=Math.round(vol/rutas);
+  const horarios=calcHorariosSimulados(vol,rutas);
+  const evPM=vol>=params.umbralPM2?2:vol>=params.umbralPM1?1:0;
+
+  const f=v=>v===0?'<span style="color:#ccc">0</span>':v;
+  const fmtH=m=>minToHM(m);
+
+  cont.innerHTML=`
+    <div class="metrics-row-label">Dotación total recomendada<div class="ln"></div></div>
+    <div class="metrics">
+      <div class="metric"><div class="metric-label">Eventuales AM convocados</div><div class="metric-value">${dot.totalAM}</div><div class="metric-sub">cobertura ${params.cobAM}% · GGP obj. ${params.GGP}</div></div>
+      <div class="metric"><div class="metric-label">Ausentes estimados</div><div class="metric-value" style="color:#e74c3c">${dot.ausentes}</div><div class="metric-sub">${params.ausAM}% histórico</div></div>
+      <div class="metric"><div class="metric-label">Presentes estimados</div><div class="metric-value" style="color:#27ae60">${dot.presentes}</div><div class="metric-sub">convocados - ausentes</div></div>
+      <div class="metric"><div class="metric-label">Eventuales PM</div><div class="metric-value">${evPM}</div><div class="metric-sub">según umbrales calibrados</div></div>
+      <div class="metric"><div class="metric-label">Op. Varias / 5S</div><div class="metric-value">${dot.varias}</div><div class="metric-sub">según umbrales de volumen</div></div>
+      <div class="metric"><div class="metric-label">GGP estimado resultante</div><div class="metric-value" style="color:${dot.ggpEst>=params.GGP?'#27ae60':'#e74c3c'}">${dot.ggpEst}</div><div class="metric-sub">vol / presentes / ${params.horasTurno||8}h</div></div>
+    </div>
+
+    <div class="section-title">Dotación recomendada por flujo y puesto</div>
+    <div class="card">
+      <div class="table-wrap"><table>
+        <thead>
+          <tr>
+            <th class="gs sep" colspan="5">🔵 Standard</th>
+            <th class="gv sep" colspan="5">🟢 Voluminoso</th>
+            <th class="go sep" colspan="2">🟡 One Bip / Oversize</th>
+            <th class="gx sep" colspan="3">Subtotales</th>
+          </tr>
+          <tr>
+            <th class="gs sep">Paletero</th><th class="gs">Tolvero</th><th class="gs">Etiquetador</th><th class="gs">Pescador</th><th class="gs">Sorteador</th>
+            <th class="gv sep">Paletero</th><th class="gv">Tolvero</th><th class="gv">Etiquetador</th><th class="gv">Pesc/Sort</th><th class="gv">Sub Vol.</th>
+            <th class="go sep">Paletero</th><th class="go">Etiq/Sort</th>
+            <th class="gx sep">Sub Std.</th><th class="gx">Sub OBip</th><th class="gx">Total AM</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="std sep">${f(dot.std.palet)}</td><td class="std">${f(dot.std.tolv)}</td><td class="std">${f(dot.std.etiq)}</td><td class="std">${f(dot.std.pesc)}</td><td class="std">${f(dot.std.sort)}</td>
+            <td class="vol sep">${f(dot.volf.palet)}</td><td class="vol">${f(dot.volf.tolv)}</td><td class="vol">${f(dot.volf.etiq)}</td><td class="vol">${f(dot.volf.ps)}</td><td class="vol" style="font-weight:700">${dot.volTotal}</td>
+            <td class="obip sep">${f(dot.obip.palet)}</td><td class="obip">${f(dot.obip.es)}</td>
+            <td class="sep" style="font-weight:700">${dot.stdTotal}</td><td style="font-weight:700">${dot.obipTotal}</td><td style="font-weight:800;color:#1a2e4a">${dot.totalAM}</td>
+          </tr>
+        </tbody>
+      </table></div>
+      <span class="hint">Distribución según shares calibrados (Std ${(params.shareStd*100).toFixed(1)}% · Vol ${(params.shareVol*100).toFixed(1)}% · OBip ${(params.shareObip*100).toFixed(1)}%) y ratios internos por puesto del historial real.</span>
+    </div>
+
+    <div class="metrics-row-label">Flota y rutas<div class="ln"></div></div>
+    <div class="metrics">
+      <div class="metric"><div class="metric-label">Camionetas (rutas) a usar</div><div class="metric-value">${rutas}</div><div class="metric-sub">factor ruteo ${params.factorRuteo||1.003}</div></div>
+      <div class="metric"><div class="metric-label">SPR promedio</div><div class="metric-value">${spr}</div><div class="metric-sub">paq/vehículo (vol ÷ rutas)</div></div>
+      <div class="metric"><div class="metric-label">Capacidad calibrada</div><div class="metric-value">${params.paqRuta}</div><div class="metric-sub">paq/vehículo (histórico)</div></div>
+      <div class="metric"><div class="metric-label">Tandas de despacho</div><div class="metric-value">${horarios.tandas}</div><div class="metric-sub">106 posiciones simultáneas</div></div>
+    </div>
+
+    <div class="metrics-row-label">Cronograma horario recomendado<div class="ln"></div></div>
+    <div class="card">
+      <div class="table-wrap"><table>
+        <thead><tr>
+          <th>Inicio<br>ruteo</th><th>Inicio<br>proceso</th><th>Fin<br>proceso</th><th>Dur. proceso<br>(min)</th>
+          <th>Margen<br>búsqueda</th><th>Inicio<br>despacho</th><th>Fin<br>despacho</th><th>Dur. despacho<br>(min)</th><th>Apertura</th>
+        </tr></thead>
+        <tbody>
+          <tr class="hist">
+            <td style="font-weight:600">${fmtH(horarios.inicioRuteoEst)}</td>
+            <td style="font-weight:600">${fmtH(horarios.inicioProcesoEst)}</td>
+            <td style="font-weight:600">${fmtH(horarios.finProcesoEst)}</td>
+            <td>${horarios.durProcEst}</td>
+            <td>${horarios.margenBusqueda}</td>
+            <td style="font-weight:700;color:#1a5fa8">${fmtH(horarios.inicioDespachoEst)}</td>
+            <td style="font-weight:600">${fmtH(horarios.finDespachoEst)}</td>
+            <td>${horarios.durDespEst}</td>
+            <td style="font-weight:700;color:${horarios.cumpleApertura?'#27ae60':'#e74c3c'}">${horarios.cumpleApertura?'✓ Cumple (≤08:15)':'⚠ Excede 08:15'}</td>
+          </tr>
+        </tbody>
+      </table></div>
+      <span class="hint">Cálculo hacia atrás desde la apertura ideal (08:00): fin de proceso + 15 min de margen de búsqueda = inicio de despacho. La duración de proceso usa la regresión volumen→duración calibrada con el historial real; el inicio de ruteo se ubica ${horarios.offsetRuteoProceso} min antes del inicio de proceso (offset promedio histórico real). El despacho dura ${horarios.tandas} tanda(s) × 23 min (106 posiciones simultáneas).</span>
+    </div>
+  `;
 }
 
 // ── INIT ──────────────────────────────────────────────────────────────────────
