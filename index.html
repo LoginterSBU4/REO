@@ -676,7 +676,11 @@ function calibrateFromHist(hist){
   const shareVol=h.reduce((s,r)=>s+r.shareVol,0)/h.length;
   const shareObip=h.reduce((s,r)=>s+r.shareObip,0)/h.length;
   const ausAM=h.reduce((s,r)=>s+(r.ausAM/(r.evAM||1)),0)/h.length*100;
-  const paqRuta=Math.round(h.reduce((s,r)=>s+(r.volRut||r.vol)/r.rutas,0)/h.length);
+  const rutasValidas=h.filter(r=>r.rutas>0 && isFinite((r.volRut||r.vol)/r.rutas));
+  const paqRutaCalc=rutasValidas.length
+    ? Math.round(rutasValidas.reduce((s,r)=>s+(r.volRut||r.vol)/r.rutas,0)/rutasValidas.length)
+    : (params?.paqRuta || DEFAULT_PARAMS_FALLBACK.paqRuta);
+  const paqRuta=(isFinite(paqRutaCalc) && paqRutaCalc>0) ? paqRutaCalc : DEFAULT_PARAMS_FALLBACK.paqRuta;
   const midDays=h.filter(r=>r.vol>5000&&r.vol<12000);
   const volBase=midDays.length?Math.round(midDays.reduce((s,r)=>s+r.vol,0)/midDays.length):7500;
   const factDia={Lun:1.08,Mar:1.05,Mié:1.02,Jue:0.97,Vie:0.88,Sáb:0.78};
@@ -834,7 +838,7 @@ function updateUI(){
   const s=(id,v)=>{const el=document.getElementById(id);if(el)el.value=v;};
   const t=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v;};
   s('slGGP',params.GGP);t('valGGP',params.GGP+' paq/h');
-  s('slRuta',params.paqRuta);t('valRuta',params.paqRuta+' paq');
+  s('slRuta',paqRutaSeguro());t('valRuta',paqRutaSeguro()+' paq');
   s('slCob',params.cobAM);t('valCob',params.cobAM+'%');
   s('slVol',params.volBase);t('valVol',(params.volBase||0).toLocaleString('es-AR'));
   s('slAus',params.ausAM);t('valAus',params.ausAM+'%');
@@ -870,6 +874,11 @@ function getEventoMap(){
   }});return m;
 }
 function histMapFn(){const m={};histData.forEach(h=>{const d=parseInt(h.d.split('-')[2]);m[d]=h;});return m;}
+
+function paqRutaSeguro(){
+  const v=params.paqRuta;
+  return (isFinite(v) && v>0) ? v : DEFAULT_PARAMS_FALLBACK.paqRuta;
+}
 
 function calcDotacion(vol){
   const r=params.rStd||DEFAULT_PARAMS.rStd;
@@ -928,7 +937,7 @@ function computeDay(d,dow){
   const evAM=Math.ceil(vol*(params.cobAM/100)/(params.GGP*(params.horasTurno||8)));
   const ausAM=Math.round(evAM*(params.ausAM/100));
   const evPM=vol>=params.umbralPM2?2:vol>=params.umbralPM1?1:0;
-  const rutas=Math.ceil(vol*(params.factorRuteo||1.003)/params.paqRuta);
+  const rutas=Math.ceil(vol*(params.factorRuteo||1.003)/paqRutaSeguro());
   const dot=calcDotacion(vol);
   const dsEst=+(params.avgDS||0.982);
   return{d,dnom,vol,volProy:vol,evAM,evPM,ausAM,presentes:evAM-ausAM,rutas,
@@ -1207,7 +1216,7 @@ function guardarDotReg(){
     if(!h.volProy) h.volProy=vol;
     if(!h.volRut) h.volRut=vol;
   } else {
-    histData.push({d:fecha,volProy:vol,vol,volRut:vol,rutas:Math.ceil(vol*(params.factorRuteo||1.003)/params.paqRuta),
+    histData.push({d:fecha,volProy:vol,vol,volRut:vol,rutas:Math.ceil(vol*(params.factorRuteo||1.003)/paqRutaSeguro()),
       evAM,ausAM,evPM:0,
       ggpCliente:null,ggpReal:null,gnp:null,ds:params.avgDS||0.98,backlog:0,
       inicioRuteo:'',inicioProceso:'',finProceso:'',inicioDespacho:'08:00',finDespacho:'',
@@ -1627,7 +1636,7 @@ function runSimulador(){
   if(!vol||vol<=0){ cont.innerHTML=''; return; }
 
   const dot=calcDotacion(vol);
-  const rutas=Math.ceil(vol*(params.factorRuteo||1.003)/params.paqRuta);
+  const rutas=Math.ceil(vol*(params.factorRuteo||1.003)/paqRutaSeguro());
   const spr=Math.round(vol/rutas);
   const horarios=calcHorariosSimulados(vol,rutas);
   const evPM=vol>=params.umbralPM2?2:vol>=params.umbralPM1?1:0;
@@ -1679,7 +1688,7 @@ function runSimulador(){
     <div class="metrics">
       <div class="metric"><div class="metric-label">Camionetas (rutas) a usar</div><div class="metric-value">${rutas}</div><div class="metric-sub">factor ruteo ${params.factorRuteo||1.003}</div></div>
       <div class="metric"><div class="metric-label">SPR promedio</div><div class="metric-value">${spr}</div><div class="metric-sub">paq/vehículo (vol ÷ rutas)</div></div>
-      <div class="metric"><div class="metric-label">Capacidad calibrada</div><div class="metric-value">${params.paqRuta}</div><div class="metric-sub">paq/vehículo (histórico)</div></div>
+      <div class="metric"><div class="metric-label">Capacidad calibrada</div><div class="metric-value">${paqRutaSeguro()}</div><div class="metric-sub">paq/vehículo (histórico)</div></div>
       <div class="metric"><div class="metric-label">Tandas de despacho</div><div class="metric-value">${horarios.tandas}</div><div class="metric-sub">106 posiciones simultáneas</div></div>
     </div>
 
