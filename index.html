@@ -442,7 +442,7 @@ tr.peak td{background:#fffbee}
         <input type="range" id="slAus" min="0" max="15" step="0.5" oninput="syncParam('ausAM',this.value)">
         <span class="val" id="valAus"></span></div>
       <div class="slider-row"><label>Horas turno (cálculo GGP)</label>
-        <input type="range" id="slHoras" min="4" max="12" step="0.5" oninput="syncParam('horasTurno',this.value)">
+        <input type="range" id="slHoras" min="4" max="12" step="0.1" oninput="syncParam('horasTurno',this.value)">
         <span class="val" id="valHoras"></span></div>
       <div class="slider-row"><label>% Ausentismo estimado PM</label>
         <input type="range" id="slAusPM" min="0" max="15" step="0.5" oninput="syncParam('ausPM',this.value)">
@@ -750,6 +750,7 @@ async function initFirebaseSync(){
     if(remote && remote.params && remote.histData && remote.eventos){
       params = Object.assign({}, DEFAULT_PARAMS, remote.params);
       histData = remote.histData;
+      histData.forEach(recalcDerivadosHist);
       eventos = remote.eventos;
       setSync('ok','Sincronizado');
     } else {
@@ -770,7 +771,7 @@ async function initFirebaseSync(){
     if(!remote) return;
     suppressSave=true;
     if(remote.params) params=Object.assign({}, DEFAULT_PARAMS, remote.params);
-    if(remote.histData) histData=remote.histData;
+    if(remote.histData){ histData=remote.histData; histData.forEach(recalcDerivadosHist); }
     if(remote.eventos) eventos=remote.eventos;
     updateUI(); buildFactDiaUI(); compute();
     renderHistTabIfActive(); renderEventosTabIfActive();
@@ -834,6 +835,34 @@ function syncParam(key,val){ params[key]=+val; updateUI(); saveAndCompute(); }
 function timeToMin(t){if(!t)return null;const[h,m]=t.split(':').map(Number);return h*60+m;}
 function minToHM(m){if(m==null)return'—';m=Math.max(0,Math.round(m));const hh=Math.floor(m/60)%24;const mm=m%60;return String(hh).padStart(2,'0')+':'+String(mm).padStart(2,'0');}
 
+// ── CÁLCULOS AUTOMÁTICOS DE HISTÓRICO (GGP real, GNP, %Std) ──────────────────
+// GGP real = (Vol. procesado / horas de turno) / (Eventuales AM + Eventuales PM)
+function calcGGPrealAuto(h){
+  const horas=params.horasTurno||8;
+  const totalEv=(h.evAM||0)+(h.evPM||0);
+  if(!totalEv||!horas) return null;
+  return +((h.vol/horas)/totalEv).toFixed(2);
+}
+// GNP = (DS x Vol. procesado / horas de turno) / (Eventuales AM + Eventuales PM)
+function calcGNPauto(h){
+  const horas=params.horasTurno||8;
+  const totalEv=(h.evAM||0)+(h.evPM||0);
+  if(!totalEv||!horas||h.ds==null) return null;
+  return +(((h.ds*h.vol)/horas)/totalEv).toFixed(2);
+}
+// %Std = 1 - (%Vol + %OBip)
+function calcShareStdAuto(h){
+  const sv=h.shareVol||0, so=h.shareObip||0;
+  return +(1-sv-so).toFixed(4);
+}
+function recalcDerivadosHist(h){
+  h.shareStd=calcShareStdAuto(h);
+  const ggp=calcGGPrealAuto(h);
+  if(ggp!=null) h.ggpReal=ggp;
+  const gnp=calcGNPauto(h);
+  if(gnp!=null) h.gnp=gnp;
+}
+
 function updateUI(){
   const s=(id,v)=>{const el=document.getElementById(id);if(el)el.value=v;};
   const t=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v;};
@@ -842,7 +871,7 @@ function updateUI(){
   s('slCob',params.cobAM);t('valCob',params.cobAM+'%');
   s('slVol',params.volBase);t('valVol',(params.volBase||0).toLocaleString('es-AR'));
   s('slAus',params.ausAM);t('valAus',params.ausAM+'%');
-  s('slHoras',params.horasTurno??8);t('valHoras',(params.horasTurno??8)+' hs');
+  s('slHoras',params.horasTurno??8);t('valHoras',(+(params.horasTurno??8)).toFixed(1)+' hs');
   s('slAusPM',params.ausPM??0);t('valAusPM',(params.ausPM??0)+'%');
   s('umbPM1',params.umbralPM1);s('umbPM2',params.umbralPM2);
   s('umbVar1',params.umbralVarias1??7000);s('umbVar2',params.umbralVarias2??9000);
@@ -1480,21 +1509,22 @@ function renderHistTab(){
   const tb=document.getElementById('histBody');tb.innerHTML='';
   histData.forEach((h,i)=>{
     const dow=new Date(h.d+'T00:00:00').getDay();const dnom=DIAS[dow];
+    recalcDerivadosHist(h);
     const tr=document.createElement('tr');
     tr.innerHTML=`<td>${h.d.split('-')[2]}/${h.d.split('-')[1]}</td><td>${dnom}</td>
       <td><input style="width:60px" value="${h.volProy||''}" onchange="histData[${i}].volProy=+this.value;saveAll()"></td>
-      <td><input style="width:60px" value="${h.vol}" onchange="histData[${i}].vol=+this.value;saveAll()"></td>
-      <td><input style="width:45px" value="${h.evAM}" onchange="histData[${i}].evAM=+this.value;saveAll()"></td>
+      <td><input style="width:60px" value="${h.vol}" onchange="histData[${i}].vol=+this.value;recalcDerivadosHist(histData[${i}]);saveAll();renderHistTab()"></td>
+      <td><input style="width:45px" value="${h.evAM}" onchange="histData[${i}].evAM=+this.value;recalcDerivadosHist(histData[${i}]);saveAll();renderHistTab()"></td>
       <td><input style="width:35px" value="${h.ausAM||0}" onchange="histData[${i}].ausAM=+this.value;saveAll()"></td>
-      <td><input style="width:35px" value="${h.evPM}" onchange="histData[${i}].evPM=+this.value;saveAll()"></td>
+      <td><input style="width:35px" value="${h.evPM}" onchange="histData[${i}].evPM=+this.value;recalcDerivadosHist(histData[${i}]);saveAll();renderHistTab()"></td>
       <td><input style="width:40px" value="${h.rutas}" onchange="histData[${i}].rutas=+this.value;saveAll()"></td>
       <td><input style="width:45px" value="${h.ggpCliente||''}" onchange="histData[${i}].ggpCliente=+this.value;saveAll()"></td>
-      <td><input style="width:45px" value="${h.ggpReal||''}" onchange="histData[${i}].ggpReal=+this.value;saveAll()"></td>
-      <td><input style="width:45px" value="${h.gnp||''}" onchange="histData[${i}].gnp=+this.value;saveAll()"></td>
-      <td><input style="width:45px" value="${h.ds||''}" onchange="histData[${i}].ds=+this.value;saveAll()"></td>
-      <td><input style="width:45px" value="${(h.shareStd*100).toFixed(1)}" onchange="histData[${i}].shareStd=+this.value/100;saveAll()"></td>
-      <td><input style="width:40px" value="${(h.shareVol*100).toFixed(1)}" onchange="histData[${i}].shareVol=+this.value/100;saveAll()"></td>
-      <td><input style="width:40px" value="${(h.shareObip*100).toFixed(1)}" onchange="histData[${i}].shareObip=+this.value/100;saveAll()"></td>
+      <td><input style="width:45px" value="${h.ggpReal??''}" readonly disabled title="Calculado automáticamente: (Vol.proc. / horas turno) / (Ev.AM+Ev.PM)" style="background:#f0f3f7;color:#1a5fa8;font-weight:600;cursor:not-allowed"></td>
+      <td><input style="width:45px" value="${h.gnp??''}" readonly disabled title="Calculado automáticamente: (DS x Vol.proc. / horas turno) / (Ev.AM+Ev.PM)" style="background:#f0f3f7;color:#2d7a27;font-weight:600;cursor:not-allowed"></td>
+      <td><input style="width:45px" value="${h.ds||''}" onchange="histData[${i}].ds=+this.value;recalcDerivadosHist(histData[${i}]);saveAll();renderHistTab()"></td>
+      <td><input style="width:45px" value="${(h.shareStd*100).toFixed(1)}" readonly disabled title="Calculado automáticamente: 1 - (%Vol + %OBip)" style="background:#f0f3f7;color:#1a5fa8;font-weight:600;cursor:not-allowed"></td>
+      <td><input style="width:40px" value="${(h.shareVol*100).toFixed(1)}" onchange="histData[${i}].shareVol=+this.value/100;recalcDerivadosHist(histData[${i}]);saveAll();renderHistTab()"></td>
+      <td><input style="width:40px" value="${(h.shareObip*100).toFixed(1)}" onchange="histData[${i}].shareObip=+this.value/100;recalcDerivadosHist(histData[${i}]);saveAll();renderHistTab()"></td>
       <td><button class="btn btn-danger" style="font-size:10px;padding:2px 6px" onclick="deleteHist(${i})">✕</button></td>`;
     tb.appendChild(tr);
   });
