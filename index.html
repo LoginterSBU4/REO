@@ -210,31 +210,27 @@ tr.peak td{background:#fffbee}
     <div class="metrics" id="dotMetricsDiff"></div>
 
     <div class="section-title">Dotación ideal por flujo y puesto</div>
-    <div class="info-box">Las filas con fondo celeste son días reales — <strong>todas sus celdas son editables</strong>: el cambio escribe directamente sobre el mismo registro histórico (igual dato que ves en la pestaña Histórico) y los totales se recalculan solos. Las filas de forecast (sin fondo) son de solo lectura porque son proyección, no dato real.</div>
     <div class="card">
       <div class="table-wrap"><table>
         <thead>
           <tr>
-            <th class="left" rowspan="2">Fecha</th><th rowspan="2">Día</th><th rowspan="2">Vol.<br>proc.</th>
+            <th class="left" rowspan="2">Fecha</th><th rowspan="2">Día</th><th rowspan="2">Vol.</th>
             <th class="gs sep" colspan="5">🔵 Standard</th>
             <th class="gv sep" colspan="5">🟢 Voluminoso</th>
             <th class="go sep" colspan="2">🟡 One Bip</th>
-            <th class="gt sep" colspan="3">Op. / PM</th>
+            <th class="gt sep" colspan="2">Op.</th>
             <th class="gx sep" colspan="3">Totales</th>
           </tr>
           <tr>
             <th class="gs sep">Palet.</th><th class="gs">Tolv.</th><th class="gs">Etiq.</th><th class="gs">Pesc.</th><th class="gs">Sort.</th>
             <th class="gv sep">Palet.</th><th class="gv">Tolv.</th><th class="gv">Etiq.</th><th class="gv">P/S</th><th class="gv">Sub</th>
             <th class="go sep">Palet.</th><th class="go">Etiq/S</th>
-            <th class="gt sep">Ev.PM</th><th class="gt">Var/5S</th><th class="gt">Ausen.<br>AM</th>
-            <th class="gx sep">Conv.<br>AM</th><th class="gx">Pres.<br>AM</th><th class="gx">GGP<br>est.</th>
+            <th class="gt sep">Var/5S</th><th class="gt">Ausen.</th>
+            <th class="gx sep">Conv.</th><th class="gx">Pres.</th><th class="gx">GGP<br>est.</th>
           </tr>
         </thead>
         <tbody id="dotBody"></tbody>
       </table></div>
-      <div class="btn-row" style="margin-top:12px">
-        <button class="btn btn-success" onclick="addHistRowFromDotacion()">+ Agregar día (dato real)</button>
-      </div>
     </div>
     <div class="grid3">
       <div class="card"><div class="card-title">Real vs ideal AM (histórico)</div>
@@ -245,8 +241,49 @@ tr.peak td{background:#fffbee}
         <div class="chart-wrap" style="height:200px"><canvas id="chartVolD"></canvas></div></div>
     </div>
 
+    <div class="section-title">📝 Editar dotación real por día / agregar registro</div>
+    <div class="card">
+      <div class="info-box">Editá la dotación real de un día existente, o creá un registro nuevo seleccionando una fecha que todavía no tenga datos. <strong>Esto modifica directamente el registro histórico</strong> (mismo dato que ves en la pestaña Histórico) — el forecast se recalibra automáticamente al guardar.</div>
+      <div class="reg-form">
+        <div class="form-group"><label>Fecha</label><input type="date" id="dotRegFecha" min="2026-06-01" max="2026-06-30" onchange="cargarDotRegForm()"></div>
+        <div class="form-group"><label>Vol. procesado</label><input type="number" id="dotRegVol" step="10"></div>
+        <div class="form-group"><label>Ev. AM convocados</label><input type="number" id="dotRegEvAM" step="1"></div>
+        <div class="form-group"><label>Ausentes AM</label><input type="number" id="dotRegAusAM" step="1"></div>
+        <div class="form-group"><label>Ev. PM convocados</label><input type="number" id="dotRegEvPM" step="1"></div>
+      </div>
+      <div class="section-title" style="margin-top:14px">🔵 Standard</div>
+      <div class="reg-form">
+        <div class="form-group"><label>Paletero</label><input type="number" id="dotRegStdPalet" step="1"></div>
+        <div class="form-group"><label>Tolvero</label><input type="number" id="dotRegStdTolv" step="1"></div>
+        <div class="form-group"><label>Etiquetador</label><input type="number" id="dotRegStdEtiq" step="1"></div>
+        <div class="form-group"><label>Pescador</label><input type="number" id="dotRegStdPesc" step="1"></div>
+        <div class="form-group"><label>Sorteador</label><input type="number" id="dotRegStdSort" step="1"></div>
+      </div>
+      <div class="section-title" style="margin-top:14px">🟢 Voluminoso</div>
+      <div class="reg-form">
+        <div class="form-group"><label>Paletero</label><input type="number" id="dotRegVolPalet" step="1"></div>
+        <div class="form-group"><label>Tolvero</label><input type="number" id="dotRegVolTolv" step="1"></div>
+        <div class="form-group"><label>Etiquetador</label><input type="number" id="dotRegVolEtiq" step="1"></div>
+        <div class="form-group"><label>Pescador/Sorteador</label><input type="number" id="dotRegVolPS" step="1"></div>
+      </div>
+      <div class="section-title" style="margin-top:14px">🟡 One Bip / Operaciones</div>
+      <div class="reg-form">
+        <div class="form-group"><label>Paletero OBip</label><input type="number" id="dotRegObipPalet" step="1"></div>
+        <div class="form-group"><label>Etiq/Sort OBip</label><input type="number" id="dotRegObipES" step="1"></div>
+        <div class="form-group"><label>Op. varias / 5S</label><input type="number" id="dotRegVarias" step="1">
+          <span class="hint">Solo aplica si Ev. PM &gt; 0</span></div>
+        <div class="form-group"><label>%Vol del día (sobre vol. total)</label><input type="number" id="dotRegShareVol" step="0.1" placeholder="Ej: 13.5"></div>
+        <div class="form-group"><label>%OBip del día (sobre vol. total)</label><input type="number" id="dotRegShareObip" step="0.1" placeholder="Ej: 2.5"></div>
+      </div>
+      <span class="hint">El %Std se calcula automáticamente como 1 − (%Vol + %OBip), igual que en Histórico.</span>
+      <div class="btn-row">
+        <button class="btn btn-primary" onclick="guardarDotReg()">💾 Guardar registro de dotación</button>
+        <button class="btn btn-outline" onclick="limpiarDotRegForm()">Limpiar formulario</button>
+      </div>
+    </div>
+
     <div class="section-title">🔮 Forecast de dotación — resto del mes</div>
-    <div class="info-box">Dotación ideal proyectada por flujo y puesto para los días sin dato real, usando GGP objetivo, shares estimados del histórico y ratios calibrados. El volumen estimado de cada día usa el <strong>share de volumen por día de semana (Lun-Sáb, suma 100%) calculado para el tercio del mes correspondiente</strong> (principio/mitad/final), no un factor lineal fijo.</div>
+    <div class="info-box">Dotación ideal proyectada por flujo y puesto para los días sin dato real, usando GGP objetivo, shares estimados del histórico y ratios calibrados.</div>
     <div class="card">
       <div class="table-wrap"><table>
         <thead>
