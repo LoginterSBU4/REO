@@ -210,27 +210,31 @@ tr.peak td{background:#fffbee}
     <div class="metrics" id="dotMetricsDiff"></div>
 
     <div class="section-title">Dotación ideal por flujo y puesto</div>
+    <div class="info-box">Las filas con fondo celeste son días reales — <strong>todas sus celdas son editables</strong>: el cambio escribe directamente sobre el mismo registro histórico (igual dato que ves en la pestaña Histórico) y los totales se recalculan solos. Las filas de forecast (sin fondo) son de solo lectura porque son proyección, no dato real.</div>
     <div class="card">
       <div class="table-wrap"><table>
         <thead>
           <tr>
-            <th class="left" rowspan="2">Fecha</th><th rowspan="2">Día</th><th rowspan="2">Vol.</th>
+            <th class="left" rowspan="2">Fecha</th><th rowspan="2">Día</th><th rowspan="2">Vol.<br>proc.</th>
             <th class="gs sep" colspan="5">🔵 Standard</th>
             <th class="gv sep" colspan="5">🟢 Voluminoso</th>
             <th class="go sep" colspan="2">🟡 One Bip</th>
-            <th class="gt sep" colspan="2">Op.</th>
+            <th class="gt sep" colspan="3">Op. / PM</th>
             <th class="gx sep" colspan="3">Totales</th>
           </tr>
           <tr>
             <th class="gs sep">Palet.</th><th class="gs">Tolv.</th><th class="gs">Etiq.</th><th class="gs">Pesc.</th><th class="gs">Sort.</th>
             <th class="gv sep">Palet.</th><th class="gv">Tolv.</th><th class="gv">Etiq.</th><th class="gv">P/S</th><th class="gv">Sub</th>
             <th class="go sep">Palet.</th><th class="go">Etiq/S</th>
-            <th class="gt sep">Var/5S</th><th class="gt">Ausen.</th>
-            <th class="gx sep">Conv.</th><th class="gx">Pres.</th><th class="gx">GGP<br>est.</th>
+            <th class="gt sep">Ev.PM</th><th class="gt">Var/5S</th><th class="gt">Ausen.<br>AM</th>
+            <th class="gx sep">Conv.<br>AM</th><th class="gx">Pres.<br>AM</th><th class="gx">GGP<br>est.</th>
           </tr>
         </thead>
         <tbody id="dotBody"></tbody>
       </table></div>
+      <div class="btn-row" style="margin-top:12px">
+        <button class="btn btn-success" onclick="addHistRowFromDotacion()">+ Agregar día (dato real)</button>
+      </div>
     </div>
     <div class="grid3">
       <div class="card"><div class="card-title">Real vs ideal AM (histórico)</div>
@@ -241,49 +245,8 @@ tr.peak td{background:#fffbee}
         <div class="chart-wrap" style="height:200px"><canvas id="chartVolD"></canvas></div></div>
     </div>
 
-    <div class="section-title">📝 Editar dotación real por día / agregar registro</div>
-    <div class="card">
-      <div class="info-box">Editá la dotación real de un día existente, o creá un registro nuevo seleccionando una fecha que todavía no tenga datos. <strong>Esto modifica directamente el registro histórico</strong> (mismo dato que ves en la pestaña Histórico) — el forecast se recalibra automáticamente al guardar.</div>
-      <div class="reg-form">
-        <div class="form-group"><label>Fecha</label><input type="date" id="dotRegFecha" min="2026-06-01" max="2026-06-30" onchange="cargarDotRegForm()"></div>
-        <div class="form-group"><label>Vol. procesado</label><input type="number" id="dotRegVol" step="10"></div>
-        <div class="form-group"><label>Ev. AM convocados</label><input type="number" id="dotRegEvAM" step="1"></div>
-        <div class="form-group"><label>Ausentes AM</label><input type="number" id="dotRegAusAM" step="1"></div>
-        <div class="form-group"><label>Ev. PM convocados</label><input type="number" id="dotRegEvPM" step="1"></div>
-      </div>
-      <div class="section-title" style="margin-top:14px">🔵 Standard</div>
-      <div class="reg-form">
-        <div class="form-group"><label>Paletero</label><input type="number" id="dotRegStdPalet" step="1"></div>
-        <div class="form-group"><label>Tolvero</label><input type="number" id="dotRegStdTolv" step="1"></div>
-        <div class="form-group"><label>Etiquetador</label><input type="number" id="dotRegStdEtiq" step="1"></div>
-        <div class="form-group"><label>Pescador</label><input type="number" id="dotRegStdPesc" step="1"></div>
-        <div class="form-group"><label>Sorteador</label><input type="number" id="dotRegStdSort" step="1"></div>
-      </div>
-      <div class="section-title" style="margin-top:14px">🟢 Voluminoso</div>
-      <div class="reg-form">
-        <div class="form-group"><label>Paletero</label><input type="number" id="dotRegVolPalet" step="1"></div>
-        <div class="form-group"><label>Tolvero</label><input type="number" id="dotRegVolTolv" step="1"></div>
-        <div class="form-group"><label>Etiquetador</label><input type="number" id="dotRegVolEtiq" step="1"></div>
-        <div class="form-group"><label>Pescador/Sorteador</label><input type="number" id="dotRegVolPS" step="1"></div>
-      </div>
-      <div class="section-title" style="margin-top:14px">🟡 One Bip / Operaciones</div>
-      <div class="reg-form">
-        <div class="form-group"><label>Paletero OBip</label><input type="number" id="dotRegObipPalet" step="1"></div>
-        <div class="form-group"><label>Etiq/Sort OBip</label><input type="number" id="dotRegObipES" step="1"></div>
-        <div class="form-group"><label>Op. varias / 5S</label><input type="number" id="dotRegVarias" step="1">
-          <span class="hint">Solo aplica si Ev. PM &gt; 0</span></div>
-        <div class="form-group"><label>%Vol del día (sobre vol. total)</label><input type="number" id="dotRegShareVol" step="0.1" placeholder="Ej: 13.5"></div>
-        <div class="form-group"><label>%OBip del día (sobre vol. total)</label><input type="number" id="dotRegShareObip" step="0.1" placeholder="Ej: 2.5"></div>
-      </div>
-      <span class="hint">El %Std se calcula automáticamente como 1 − (%Vol + %OBip), igual que en Histórico.</span>
-      <div class="btn-row">
-        <button class="btn btn-primary" onclick="guardarDotReg()">💾 Guardar registro de dotación</button>
-        <button class="btn btn-outline" onclick="limpiarDotRegForm()">Limpiar formulario</button>
-      </div>
-    </div>
-
     <div class="section-title">🔮 Forecast de dotación — resto del mes</div>
-    <div class="info-box">Dotación ideal proyectada por flujo y puesto para los días sin dato real, usando GGP objetivo, shares estimados del histórico y ratios calibrados.</div>
+    <div class="info-box">Dotación ideal proyectada por flujo y puesto para los días sin dato real, usando GGP objetivo, shares estimados del histórico y ratios calibrados. El volumen estimado de cada día usa el <strong>share de volumen por día de semana (Lun-Sáb, suma 100%) calculado para el tercio del mes correspondiente</strong> (principio/mitad/final), no un factor lineal fijo.</div>
     <div class="card">
       <div class="table-wrap"><table>
         <thead>
@@ -1124,28 +1087,99 @@ function renderAlert(rows){
 }
 
 // ── DOTACIÓN ──────────────────────────────────────────────────────────────────
+// Helper: dado un día del array `rows` (que para históricos trae r.hist apuntando
+// al objeto REAL de histData), devuelve el índice real en histData para poder mutarlo.
+function histIdxByFecha(fechaISO){ return histData.findIndex(x=>x.d===fechaISO); }
+
+// Recalcula y persiste cuando se edita una celda de dotación real desde la tabla de Dotación.
+function editDotCell(fechaISO, grupo, campo, val){
+  const idx=histIdxByFecha(fechaISO);
+  if(idx<0){ console.error('No se encontró el registro histórico para', fechaISO); return; }
+  const h=histData[idx];
+  const num=Math.max(0, +val||0);
+  if(grupo==='vol'){ h.vol=num; if(!h.volProy)h.volProy=num; if(!h.volRut)h.volRut=num; }
+  else if(grupo==='evAM'){ h.evAM=num; }
+  else if(grupo==='ausAM'){ h.ausAM=num; }
+  else if(grupo==='evPM'){ h.evPM=num; }
+  else if(grupo==='varias'){ h.varias=num; }
+  else if(grupo==='std'){ h.std=h.std||{}; h.std[campo]=num; }
+  else if(grupo==='volf'){ h.volf=h.volf||{}; h.volf[campo]=num; }
+  else if(grupo==='obip'){ h.obip=h.obip||{}; h.obip[campo]=num; }
+  else if(grupo==='shareVol'){ h.shareVol=num/100; }
+  else if(grupo==='shareObip'){ h.shareObip=num/100; }
+  recalcDerivadosHist(h);
+  saveAll();      // recalibra automáticamente los parámetros derivados del historial
+  compute();      // refresca TODAS las pestañas dependientes (Forecast, Tiempos, Productividad)
+  renderHistTabIfActive();
+}
+
+function addHistRowFromDotacion(){
+  const fecha=prompt('Fecha del nuevo día real (YYYY-MM-DD):');
+  if(!fecha||!/^\d{4}-\d{2}-\d{2}$/.test(fecha))return alert('Formato inválido. Usá YYYY-MM-DD, ej: 2026-06-22');
+  if(histIdxByFecha(fecha)>=0) return alert('Ya existe un registro para esa fecha. Editalo directamente en la tabla.');
+  const nuevo={d:fecha,volProy:0,vol:0,volRut:0,rutas:0,evAM:0,ausAM:0,evPM:0,
+    ggpCliente:null,ggpReal:null,gnp:null,ds:params.avgDS||0.98,backlog:0,
+    inicioRuteo:'',inicioProceso:'',finProceso:'',inicioDespacho:'08:00',finDespacho:'',
+    shareStd:params.shareStd,shareVol:params.shareVol,shareObip:params.shareObip,
+    std:{palet:0,tolv:0,etiq:0,pesc:0,sort:0},
+    volf:{palet:0,tolv:0,etiq:0,pesc:0,sort:0,ps:0},
+    obip:{palet:0,es:0},varias:0};
+  recalcDerivadosHist(nuevo);
+  histData.push(nuevo);
+  histData.sort((a,b)=>a.d.localeCompare(b.d));
+  saveAll();compute();renderHistTabIfActive();
+}
+
 function renderDotacionTab(rows){
   const tb=document.getElementById('dotBody');tb.innerHTML='';
+  const inp=(fecha,grupo,campo,val,w=34)=>
+    `<input type="number" min="0" step="1" value="${val}" style="width:${w}px;padding:2px 3px;border:1px solid #dde2ea;border-radius:4px;text-align:center;font-size:11px"
+      onchange="editDotCell('${fecha}','${grupo}','${campo}',this.value)">`;
   rows.forEach(r=>{
     const tr=document.createElement('tr');
-    if(r.tipo==='hist')tr.className='hist';
-    else if(r.tipo==='holiday'){tr.className='holiday';
+    if(r.tipo==='holiday'){tr.className='holiday';
       tr.innerHTML=`<td class="left">${String(r.d).padStart(2,'0')}/06</td><td>${r.dnom}</td><td colspan="20" style="color:#ccc">${r.evento||'Sin operación'}</td>`;
       tb.appendChild(tr);return;}
-    else if(r.tipo==='peak')tr.className='peak';
     const dot=r.dot;
-    const f=v=>v===0?'<span style="color:#ccc">0</span>':v;
-    const isH=r.tipo==='hist';
     const ggpColor=dot.ggpEst>=params.GGP?'#27ae60':'#e74c3c';
-    tr.innerHTML=`<td class="left">${String(r.d).padStart(2,'0')}/06${isH?'<sup style="color:#1a5fa8;font-size:8px"> H</sup>':''}</td>
-      <td>${r.dnom}</td><td style="font-weight:600">${r.vol.toLocaleString('es-AR')}</td>
-      <td class="std sep">${f(dot.std.palet)}</td><td class="std">${f(dot.std.tolv)}</td><td class="std">${f(dot.std.etiq)}</td><td class="std">${f(dot.std.pesc)}</td><td class="std">${f(dot.std.sort)}</td>
-      <td class="vol sep">${f(dot.volf.palet)}</td><td class="vol">${f(dot.volf.tolv)}</td><td class="vol">${f(dot.volf.etiq)}</td><td class="vol">${f(dot.volf.ps)}</td><td class="vol" style="font-weight:600">${dot.volTotal}</td>
-      <td class="obip sep">${f(dot.obip.palet)}</td><td class="obip">${f(dot.obip.es)}</td>
-      <td class="sep" style="color:#888">${dot.varias}</td><td style="color:#e74c3c">${dot.ausentes}</td>
-      <td class="sep" style="font-weight:700;color:#1a2e4a">${dot.grandTotal}</td>
-      <td style="color:#27ae60">${dot.presentes}</td>
-      <td style="font-weight:700;color:${ggpColor}">${dot.ggpEst}</td>`;
+
+    if(r.tipo==='hist'){
+      tr.className='hist';
+      const fechaISO=r.hist.d;
+      tr.innerHTML=`<td class="left">${String(r.d).padStart(2,'0')}/06<sup style="color:#1a5fa8;font-size:8px"> H</sup></td>
+        <td>${r.dnom}</td>
+        <td>${inp(fechaISO,'vol',null,r.vol,46)}</td>
+        <td class="std sep">${inp(fechaISO,'std','palet',r.hist.std?.palet||0)}</td>
+        <td class="std">${inp(fechaISO,'std','tolv',r.hist.std?.tolv||0)}</td>
+        <td class="std">${inp(fechaISO,'std','etiq',r.hist.std?.etiq||0)}</td>
+        <td class="std">${inp(fechaISO,'std','pesc',r.hist.std?.pesc||0)}</td>
+        <td class="std">${inp(fechaISO,'std','sort',r.hist.std?.sort||0)}</td>
+        <td class="vol sep">${inp(fechaISO,'volf','palet',r.hist.volf?.palet||0)}</td>
+        <td class="vol">${inp(fechaISO,'volf','tolv',r.hist.volf?.tolv||0)}</td>
+        <td class="vol">${inp(fechaISO,'volf','etiq',r.hist.volf?.etiq||0)}</td>
+        <td class="vol">${inp(fechaISO,'volf','ps',r.hist.volf?.ps||0)}</td>
+        <td class="vol" style="font-weight:600">${dot.volTotal}</td>
+        <td class="obip sep">${inp(fechaISO,'obip','palet',r.hist.obip?.palet||0)}</td>
+        <td class="obip">${inp(fechaISO,'obip','es',r.hist.obip?.es||0)}</td>
+        <td class="gt sep">${inp(fechaISO,'evPM',null,r.evPM,30)}</td>
+        <td class="gt">${inp(fechaISO,'varias',null,r.hist.varias||0,30)}</td>
+        <td class="gt">${inp(fechaISO,'ausAM',null,r.ausAM,30)}</td>
+        <td class="sep" style="font-weight:700;color:#1a2e4a">${inp(fechaISO,'evAM',null,r.evAM,40)}</td>
+        <td style="color:#27ae60">${dot.presentes}</td>
+        <td style="font-weight:700;color:${ggpColor}">${dot.ggpEst}</td>`;
+    } else {
+      if(r.tipo==='peak')tr.className='peak';
+      const f=v=>v===0?'<span style="color:#ccc">0</span>':v;
+      tr.innerHTML=`<td class="left">${String(r.d).padStart(2,'0')}/06</td>
+        <td>${r.dnom}</td><td style="font-weight:600">${r.vol.toLocaleString('es-AR')}</td>
+        <td class="std sep">${f(dot.std.palet)}</td><td class="std">${f(dot.std.tolv)}</td><td class="std">${f(dot.std.etiq)}</td><td class="std">${f(dot.std.pesc)}</td><td class="std">${f(dot.std.sort)}</td>
+        <td class="vol sep">${f(dot.volf.palet)}</td><td class="vol">${f(dot.volf.tolv)}</td><td class="vol">${f(dot.volf.etiq)}</td><td class="vol">${f(dot.volf.ps)}</td><td class="vol" style="font-weight:600">${dot.volTotal}</td>
+        <td class="obip sep">${f(dot.obip.palet)}</td><td class="obip">${f(dot.obip.es)}</td>
+        <td class="gt sep">${f(dot.evPM)}</td><td class="gt">${f(dot.varias)}</td><td class="gt">${f(dot.ausentes)}</td>
+        <td class="sep" style="font-weight:700;color:#1a2e4a">${dot.grandTotal}</td>
+        <td style="color:#27ae60">${dot.presentes}</td>
+        <td style="font-weight:700;color:${ggpColor}">${dot.ggpEst}</td>`;
+    }
     tb.appendChild(tr);
   });
 
@@ -1198,81 +1232,6 @@ function renderDotacionTab(rows){
     <div class="metric diff"><div class="metric-label">Eficiencia dotación</div><div class="metric-value">${hists.length?(100-Math.min(100,Math.abs(+diffPct))).toFixed(0):'-'}%</div><div class="metric-sub">100% = dotación real = ideal</div></div>`;
 
   renderDotForecast(fc);
-}
-
-// ── EDICIÓN / ALTA DE DOTACIÓN REAL (pestaña Dotación) ───────────────────────
-function cargarDotRegForm(){
-  const fecha=document.getElementById('dotRegFecha').value;
-  if(!fecha)return;
-  const h=histData.find(x=>x.d===fecha);
-  const setv=(id,v)=>{document.getElementById(id).value=(v===undefined||v===null)?'':v;};
-  if(h){
-    setv('dotRegVol',h.vol);setv('dotRegEvAM',h.evAM);setv('dotRegAusAM',h.ausAM);setv('dotRegEvPM',h.evPM);
-    setv('dotRegStdPalet',h.std?.palet);setv('dotRegStdTolv',h.std?.tolv);setv('dotRegStdEtiq',h.std?.etiq);
-    setv('dotRegStdPesc',h.std?.pesc);setv('dotRegStdSort',h.std?.sort);
-    setv('dotRegVolPalet',h.volf?.palet);setv('dotRegVolTolv',h.volf?.tolv);setv('dotRegVolEtiq',h.volf?.etiq);setv('dotRegVolPS',h.volf?.ps);
-    setv('dotRegObipPalet',h.obip?.palet);setv('dotRegObipES',h.obip?.es);
-    setv('dotRegVarias',h.varias);
-    setv('dotRegShareVol',h.shareVol!=null?(h.shareVol*100).toFixed(1):'');
-    setv('dotRegShareObip',h.shareObip!=null?(h.shareObip*100).toFixed(1):'');
-  } else {
-    ['dotRegVol','dotRegEvAM','dotRegAusAM','dotRegEvPM','dotRegStdPalet','dotRegStdTolv','dotRegStdEtiq','dotRegStdPesc','dotRegStdSort',
-     'dotRegVolPalet','dotRegVolTolv','dotRegVolEtiq','dotRegVolPS','dotRegObipPalet','dotRegObipES','dotRegVarias',
-     'dotRegShareVol','dotRegShareObip'].forEach(id=>document.getElementById(id).value='');
-  }
-}
-function limpiarDotRegForm(){
-  document.getElementById('dotRegFecha').value='';
-  ['dotRegVol','dotRegEvAM','dotRegAusAM','dotRegEvPM','dotRegStdPalet','dotRegStdTolv','dotRegStdEtiq','dotRegStdPesc','dotRegStdSort',
-   'dotRegVolPalet','dotRegVolTolv','dotRegVolEtiq','dotRegVolPS','dotRegObipPalet','dotRegObipES','dotRegVarias',
-   'dotRegShareVol','dotRegShareObip'].forEach(id=>document.getElementById(id).value='');
-}
-function guardarDotReg(){
-  const fecha=document.getElementById('dotRegFecha').value;
-  if(!fecha)return alert('Seleccioná una fecha.');
-  const num=(id,def=0)=>{const v=document.getElementById(id).value;return v===''?def:+v;};
-  const vol=num('dotRegVol');
-  if(!vol)return alert('Ingresá el volumen procesado.');
-  const evAM=num('dotRegEvAM');
-  const ausAM=num('dotRegAusAM');
-  const evPM=num('dotRegEvPM');
-  const std={palet:num('dotRegStdPalet'),tolv:num('dotRegStdTolv'),etiq:num('dotRegStdEtiq'),pesc:num('dotRegStdPesc'),sort:num('dotRegStdSort')};
-  const volf={palet:num('dotRegVolPalet'),tolv:num('dotRegVolTolv'),etiq:num('dotRegVolEtiq'),pesc:0,sort:0,ps:num('dotRegVolPS')};
-  const obip={palet:num('dotRegObipPalet'),es:num('dotRegObipES')};
-  const varias=num('dotRegVarias');
-  const inputShareVol=document.getElementById('dotRegShareVol').value;
-  const inputShareObip=document.getElementById('dotRegShareObip').value;
-  const shareVol=inputShareVol!==''?(+inputShareVol/100):(params.shareVol);
-  const shareObip=inputShareObip!==''?(+inputShareObip/100):(params.shareObip);
-  const shareStd=+(1-shareVol-shareObip).toFixed(4);
-
-  const idx=histData.findIndex(h=>h.d===fecha);
-  if(idx>=0){
-    // Mutar el MISMO objeto en histData (no crear uno nuevo) para que la referencia
-    // se mantenga consistente en todo el modelo (Forecast, Histórico, etc.)
-    const h=histData[idx];
-    h.vol=vol; h.evAM=evAM; h.ausAM=ausAM; h.evPM=evPM;
-    h.std=std; h.volf=volf; h.obip=obip; h.varias=varias;
-    h.shareVol=shareVol; h.shareObip=shareObip; h.shareStd=shareStd;
-    if(!h.volProy) h.volProy=vol;
-    if(!h.volRut) h.volRut=vol;
-    recalcDerivadosHist(h);
-  } else {
-    const nuevo={d:fecha,volProy:vol,vol,volRut:vol,rutas:Math.ceil(vol*(params.factorRuteo||1.003)/paqRutaSeguro()),
-      evAM,ausAM,evPM,
-      ggpCliente:null,ggpReal:null,gnp:null,ds:params.avgDS||0.98,backlog:0,
-      inicioRuteo:'',inicioProceso:'',finProceso:'',inicioDespacho:'08:00',finDespacho:'',
-      shareStd,shareVol,shareObip,std,volf,obip,varias};
-    recalcDerivadosHist(nuevo);
-    histData.push(nuevo);
-    histData.sort((a,b)=>a.d.localeCompare(b.d));
-  }
-  // saveAll() ya recalibra automáticamente los parámetros derivados del historial (shares, ratios, etc.)
-  saveAll();
-  compute();
-  renderDotacionTab(allRows());
-  renderHistTabIfActive();
-  alert('✅ Dotación guardada para '+fecha+'. El forecast y los shares estimados ya se recalibraron con este dato.');
 }
 
 // ── FORECAST DE DOTACIÓN (resto del mes) ──────────────────────────────────────
