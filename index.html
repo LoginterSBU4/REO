@@ -55,6 +55,7 @@
 </script>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:Arial,sans-serif;background:#f4f5f7;color:#222;font-size:13px}
@@ -186,7 +187,7 @@ tr.peak td{background:#fffbee}
         <thead><tr>
           <th class="left">Fecha</th><th>Día</th><th>Vol.proy.</th><th>Vol.proc.</th>
           <th>Ev.AM</th><th>Ausentes<br>est.</th><th>Presentes<br>est.</th>
-          <th>Ev.PM</th><th>Rutas</th><th>GGP<br>obj.</th><th>DS%<br>est.</th><th>Estado</th>
+          <th>Ev.PM</th><th>Rutas</th><th>GGP<br>obj.</th><th>GGP<br>real</th><th>DS%<br>est.</th><th>Estado</th>
         </tr></thead>
         <tbody id="forecastBody"></tbody>
       </table></div>
@@ -237,13 +238,17 @@ tr.peak td{background:#fffbee}
             <th class="go sep">Palet.</th><th class="go">Etiq/S</th>
             <th class="gpm sep">Conv.<br>PM</th><th class="gpm">Ausen.<br>PM</th><th class="gpm">Pres.<br>PM</th>
             <th class="gt sep">Var/5S</th><th class="gt">Ausen.<br>AM</th>
-            <th class="gx sep">Convoc.<br>Día</th><th class="gx">Pres.<br>AM</th><th class="gx">GGP<br>est.</th>
+            <th class="gx sep">Convoc.<br>Día</th><th class="gx">GGP<br>est.</th>
           </tr>
         </thead>
         <tbody id="dotBody"></tbody>
       </table></div>
       <div class="btn-row" style="margin-top:12px">
         <button class="btn btn-success" onclick="addHistRowFromDotacion()">+ Agregar día (dato real)</button>
+        <button class="btn btn-outline" onclick="descargarPlantillaDotacion()">⬇ Descargar plantilla Excel</button>
+        <label class="btn btn-primary" style="cursor:pointer;margin-bottom:0">⬆ Cargar Excel
+          <input type="file" id="fileDotacion" accept=".xlsx,.xls" style="display:none" onchange="cargarExcelDotacion(this.files[0])">
+        </label>
       </div>
     </div>
     <div class="grid3">
@@ -298,6 +303,10 @@ tr.peak td{background:#fffbee}
       </div>
       <div class="btn-row">
         <button class="btn btn-primary" onclick="registrarTiempoReal()">💾 Guardar tiempos del día</button>
+        <button class="btn btn-outline" onclick="descargarPlantillaTiempos()">⬇ Descargar plantilla Excel</button>
+        <label class="btn btn-primary" style="cursor:pointer;margin-bottom:0">⬆ Cargar Excel
+          <input type="file" id="fileTiempos" accept=".xlsx,.xls" style="display:none" onchange="cargarExcelTiempos(this.files[0])">
+        </label>
         <span class="hint" style="align-self:center;color:#888">Si la fecha ya tiene un día histórico, se actualizan sus tiempos. Si no existe, se crea un registro nuevo con esos tiempos (y el resto de variables en 0, editables en la pestaña Histórico).</span>
       </div>
     </div>
@@ -482,6 +491,10 @@ tr.peak td{background:#fffbee}
       </table></div>
       <div class="btn-row" style="margin-top:12px">
         <button class="btn btn-success" onclick="addHistRow()">+ Agregar día</button>
+        <button class="btn btn-outline" onclick="descargarPlantillaHistorico()">⬇ Descargar plantilla Excel</button>
+        <label class="btn btn-primary" style="cursor:pointer;margin-bottom:0">⬆ Cargar Excel
+          <input type="file" id="fileHistorico" accept=".xlsx,.xls" style="display:none" onchange="cargarExcelHistorico(this.files[0])">
+        </label>
       </div>
     </div>
   </div>
@@ -1171,6 +1184,10 @@ function renderForecastTab(rows){
       '<span class="tag tag-f">forecast</span>';
     const v=n=>r.tipo==='holiday'?'—':n;
     const dsStr=r.ds?(r.ds*100).toFixed(1)+'%':'—';
+    const ggpRealCell = (r.tipo==='hist' && r.hist)
+      ? (()=>{ const g=calcGGPenVivo(r.hist); const c=(g!=null&&g>=params.GGP)?'#27ae60':(g!=null?'#e74c3c':'#aaa');
+          return `<span style="font-weight:700;color:${c}">${g??'—'}</span>`; })()
+      : '—';
     const evPMcell = r.tipo==='holiday' ? '—'
       : r.tipo==='hist' ? r.evPM
       : `<input type="number" min="0" step="1" value="${r.evPM}" style="width:42px" onchange="setFcPM(${r.d},this.value)">`;
@@ -1184,6 +1201,7 @@ function renderForecastTab(rows){
       <td>${evPMcell}</td>
       <td>${v(r.rutas)}</td>
       <td style="color:#888;font-size:10px">${v(params.GGP)}</td>
+      <td>${ggpRealCell}</td>
       <td>${dsStr}</td>
       <td>${tag}</td>`;
     tb.appendChild(tr);
@@ -1353,7 +1371,6 @@ function renderDotacionTab(rows){
         <td class="gt sep">${inp(fechaISO,'varias',null,r.hist.varias||0,30)}</td>
         <td class="gt">${inp(fechaISO,'ausAM',null,r.ausAM,30)}</td>
         <td class="sep" style="font-weight:700;color:#1a2e4a" title="Suma automática de todas las personas por flujo + PM">${convocatoriaDia}</td>
-        <td style="color:#27ae60">${dot.presentes}</td>
         <td style="font-weight:800;color:${ggpVivoColor}" title="Vol.procesado / Convocatoria Día / 7.33">${ggpVivo??'—'}</td>`;
     } else {
       if(r.tipo==='peak')tr.className='peak';
@@ -1366,7 +1383,6 @@ function renderDotacionTab(rows){
         <td class="pm sep">${f(dot.evPM)}</td><td class="pm">${f(dot.ausentesPM)}</td><td class="pm">${f(dot.presentesPM)}</td>
         <td class="gt sep">${f(dot.varias)}</td><td class="gt">${f(dot.ausentes)}</td>
         <td class="sep" style="font-weight:700;color:#1a2e4a">${dot.grandTotal}</td>
-        <td style="color:#27ae60">${dot.presentes}</td>
         <td style="font-weight:700;color:${ggpColor}">${dot.ggpEst}</td>`;
     }
     tb.appendChild(tr);
@@ -1924,6 +1940,168 @@ function exportCSV(){
   });
   const blob=new Blob([[hdr,...lines].join('\n')],{type:'text/csv;charset=utf-8;'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='forecast_'+mesActivo+'.csv';a.click();
+}
+
+// ── PLANTILLAS EXCEL Y CARGA MASIVA ───────────────────────────────────────────
+// Helper: busca o crea el registro histórico de una fecha, devolviendo el objeto para mutar.
+function getOrCreateHist(fechaISO){
+  let idx=histIdxByFecha(fechaISO);
+  if(idx>=0) return histData[idx];
+  const nuevo={d:fechaISO,volProy:0,vol:0,volRut:0,rutas:0,evAM:0,ausAM:0,evPM:0,ausPM:0,
+    ggpCliente:null,ggpReal:null,gnp:null,ds:params.avgDS||0.98,backlog:0,
+    inicioRuteo:'',inicioProceso:'',finProceso:'',inicioDespacho:'08:00',finDespacho:'',
+    shareStd:params.shareStd,shareVol:params.shareVol,shareObip:params.shareObip,
+    std:{palet:0,tolv:0,etiq:0,pesc:0,sort:0},
+    volf:{palet:0,tolv:0,etiq:0,pesc:0,sort:0,ps:0},
+    obip:{palet:0,es:0},varias:0};
+  histData.push(nuevo);
+  return nuevo;
+}
+function finalizarCargaMasiva(cantidad,nombre){
+  histData.sort((a,b)=>a.d.localeCompare(b.d));
+  histData.forEach(recalcDerivadosHist);
+  saveAll();compute();renderHistTabIfActive();
+  alert('✅ '+nombre+': '+cantidad+' día(s) procesado(s) y guardado(s) en el mes '+mesActivo+'.');
+}
+function descargarXLSX(filas,nombreHoja,nombreArchivo){
+  const ws=XLSX.utils.json_to_sheet(filas);
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,nombreHoja);
+  XLSX.writeFile(wb,nombreArchivo);
+}
+function leerXLSX(file,callback){
+  const reader=new FileReader();
+  reader.onload=(e)=>{
+    try{
+      const wb=XLSX.read(e.target.result,{type:'array'});
+      const ws=wb.Sheets[wb.SheetNames[0]];
+      const json=XLSX.utils.sheet_to_json(ws,{defval:''});
+      callback(json);
+    }catch(err){ console.error(err); alert('No se pudo leer el archivo. Verificá que sea un .xlsx válido y respete el formato de la plantilla.'); }
+  };
+  reader.readAsArrayBuffer(file);
+}
+function fechaPlantillaAISO(val){
+  // Acepta 'YYYY-MM-DD', 'DD/MM/YYYY' o fecha serial de Excel
+  if(val==null||val==='') return null;
+  if(typeof val==='number'){ // serial Excel
+    const d=XLSX.SSF.parse_date_code(val);
+    if(!d) return null;
+    return d.y+'-'+String(d.m).padStart(2,'0')+'-'+String(d.d).padStart(2,'0');
+  }
+  const s=String(val).trim();
+  if(/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const m=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if(m) return m[3]+'-'+m[2].padStart(2,'0')+'-'+m[1].padStart(2,'0');
+  return null;
+}
+
+// — Plantilla DOTACIÓN —
+function descargarPlantillaDotacion(){
+  const filas=[{Fecha:'2026-07-01',Vol_Procesado:8000,
+    Std_Paletero:1,Std_Tolvero:2,Std_Etiquetador:3,Std_Pescador:3,Std_Sorteador:4,
+    Vol_Paletero:1,Vol_Tolvero:1,Vol_Etiquetador:1,Vol_PescSort:2,
+    OBip_Paletero:1,OBip_EtiqSort:1,
+    PM_Convocados:0,PM_Ausentes:0,
+    Op_Varias_5S:0,Ausentes_AM:0}];
+  descargarXLSX(filas,'Dotacion','plantilla_dotacion_'+mesActivo+'.xlsx');
+}
+function cargarExcelDotacion(file){
+  if(!file)return;
+  leerXLSX(file,(json)=>{
+    let count=0;
+    json.forEach(row=>{
+      const fechaISO=fechaPlantillaAISO(row.Fecha);
+      if(!fechaISO || !fechaISO.startsWith(mesActivo)) return;
+      const h=getOrCreateHist(fechaISO);
+      const num=(v)=>{const n=+v; return isFinite(n)?Math.max(0,n):0;};
+      if(row.Vol_Procesado!=null && row.Vol_Procesado!=='') h.vol=num(row.Vol_Procesado);
+      if(!h.volProy) h.volProy=h.vol; if(!h.volRut) h.volRut=h.vol;
+      h.std={palet:num(row.Std_Paletero),tolv:num(row.Std_Tolvero),etiq:num(row.Std_Etiquetador),pesc:num(row.Std_Pescador),sort:num(row.Std_Sorteador)};
+      h.volf={palet:num(row.Vol_Paletero),tolv:num(row.Vol_Tolvero),etiq:num(row.Vol_Etiquetador),pesc:0,sort:0,ps:num(row.Vol_PescSort)};
+      h.obip={palet:num(row.OBip_Paletero),es:num(row.OBip_EtiqSort)};
+      h.evPM=num(row.PM_Convocados);
+      h.ausPM=num(row.PM_Ausentes);
+      h.varias=num(row.Op_Varias_5S);
+      h.ausAM=num(row.Ausentes_AM);
+      h.evAM=calcConvocatoriaDia(h)-(h.evPM||0);
+      count++;
+    });
+    finalizarCargaMasiva(count,'Carga de Dotación');
+  });
+  document.getElementById('fileDotacion').value='';
+}
+
+// — Plantilla TIEMPOS —
+function descargarPlantillaTiempos(){
+  const filas=[{Fecha:'2026-07-01',Inicio_Ruteo:'03:55',Inicio_Proceso:'04:11',Fin_Proceso:'06:55',Inicio_Despacho:'08:00',Fin_Despacho:'08:49'}];
+  descargarXLSX(filas,'Tiempos','plantilla_tiempos_'+mesActivo+'.xlsx');
+}
+function horaPlantilla(val){
+  if(val==null||val==='') return '';
+  if(typeof val==='number'){ // fracción de día Excel
+    const totalMin=Math.round(val*24*60);
+    return String(Math.floor(totalMin/60)%24).padStart(2,'0')+':'+String(totalMin%60).padStart(2,'0');
+  }
+  const s=String(val).trim();
+  return /^\d{1,2}:\d{2}$/.test(s) ? (s.length===4?'0'+s:s) : '';
+}
+function cargarExcelTiempos(file){
+  if(!file)return;
+  leerXLSX(file,(json)=>{
+    let count=0;
+    json.forEach(row=>{
+      const fechaISO=fechaPlantillaAISO(row.Fecha);
+      if(!fechaISO || !fechaISO.startsWith(mesActivo)) return;
+      const h=getOrCreateHist(fechaISO);
+      const iR=horaPlantilla(row.Inicio_Ruteo), iP=horaPlantilla(row.Inicio_Proceso),
+            fP=horaPlantilla(row.Fin_Proceso), iD=horaPlantilla(row.Inicio_Despacho),
+            fD=horaPlantilla(row.Fin_Despacho);
+      if(iR) h.inicioRuteo=iR;
+      if(iP) h.inicioProceso=iP;
+      if(fP) h.finProceso=fP;
+      if(iD) h.inicioDespacho=iD;
+      if(fD) h.finDespacho=fD;
+      count++;
+    });
+    finalizarCargaMasiva(count,'Carga de Tiempos');
+  });
+  document.getElementById('fileTiempos').value='';
+}
+
+// — Plantilla HISTÓRICO —
+function descargarPlantillaHistorico(){
+  const filas=[{Fecha:'2026-07-01',Vol_Proyectado:7800,Vol_Procesado:8000,
+    Ev_AM:25,Ausentes_AM:1,Ev_PM:0,Ausentes_PM:0,Rutas:65,
+    GGP_Cliente:42.5,DS_Porcentaje:98.5,Share_Vol_Porcentaje:13.5,Share_OBip_Porcentaje:2.4}];
+  descargarXLSX(filas,'Historico','plantilla_historico_'+mesActivo+'.xlsx');
+}
+function cargarExcelHistorico(file){
+  if(!file)return;
+  leerXLSX(file,(json)=>{
+    let count=0;
+    json.forEach(row=>{
+      const fechaISO=fechaPlantillaAISO(row.Fecha);
+      if(!fechaISO || !fechaISO.startsWith(mesActivo)) return;
+      const h=getOrCreateHist(fechaISO);
+      const num=(v,def=0)=>{const n=+v; return isFinite(n)?n:def;};
+      if(row.Vol_Proyectado!=null && row.Vol_Proyectado!=='') h.volProy=num(row.Vol_Proyectado);
+      if(row.Vol_Procesado!=null && row.Vol_Procesado!=='') h.vol=num(row.Vol_Procesado);
+      if(!h.volRut) h.volRut=h.vol;
+      if(row.Ev_AM!=null && row.Ev_AM!=='') h.evAM=num(row.Ev_AM);
+      if(row.Ausentes_AM!=null && row.Ausentes_AM!=='') h.ausAM=num(row.Ausentes_AM);
+      if(row.Ev_PM!=null && row.Ev_PM!=='') h.evPM=num(row.Ev_PM);
+      if(row.Ausentes_PM!=null && row.Ausentes_PM!=='') h.ausPM=num(row.Ausentes_PM);
+      if(row.Rutas!=null && row.Rutas!=='') h.rutas=num(row.Rutas);
+      if(row.GGP_Cliente!=null && row.GGP_Cliente!=='') h.ggpCliente=num(row.GGP_Cliente,null);
+      if(row.DS_Porcentaje!=null && row.DS_Porcentaje!=='') h.ds=num(row.DS_Porcentaje)/100;
+      if(row.Share_Vol_Porcentaje!=null && row.Share_Vol_Porcentaje!=='') h.shareVol=num(row.Share_Vol_Porcentaje)/100;
+      if(row.Share_OBip_Porcentaje!=null && row.Share_OBip_Porcentaje!=='') h.shareObip=num(row.Share_OBip_Porcentaje)/100;
+      count++;
+    });
+    finalizarCargaMasiva(count,'Carga de Histórico');
+  });
+  document.getElementById('fileHistorico').value='';
 }
 
 // ── INIT ──────────────────────────────────────────────────────────────────────
