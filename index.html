@@ -1973,27 +1973,45 @@ function leerXLSX(file,callback){
   const reader=new FileReader();
   reader.onload=(e)=>{
     try{
-      const wb=XLSX.read(e.target.result,{type:'array'});
+      const wb=XLSX.read(e.target.result,{type:'array',cellDates:true});
       const ws=wb.Sheets[wb.SheetNames[0]];
-      const json=XLSX.utils.sheet_to_json(ws,{defval:''});
+      const json=XLSX.utils.sheet_to_json(ws,{defval:'',raw:true});
       callback(json);
     }catch(err){ console.error(err); alert('No se pudo leer el archivo. Verificá que sea un .xlsx válido y respete el formato de la plantilla.'); }
   };
   reader.readAsArrayBuffer(file);
 }
 function fechaPlantillaAISO(val){
-  // Acepta 'YYYY-MM-DD', 'DD/MM/YYYY' o fecha serial de Excel
+  // Acepta: objeto Date (Excel con celda formateada como fecha), número serial de Excel,
+  // texto 'YYYY-MM-DD', o texto 'DD/MM/YYYY'.
   if(val==null||val==='') return null;
-  if(typeof val==='number'){ // serial Excel
+  if(val instanceof Date && !isNaN(val.getTime())){
+    return val.getFullYear()+'-'+String(val.getMonth()+1).padStart(2,'0')+'-'+String(val.getDate()).padStart(2,'0');
+  }
+  if(typeof val==='number'){ // serial Excel (días desde 1900, con ajuste de SheetJS)
     const d=XLSX.SSF.parse_date_code(val);
     if(!d) return null;
     return d.y+'-'+String(d.m).padStart(2,'0')+'-'+String(d.d).padStart(2,'0');
   }
   const s=String(val).trim();
-  if(/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
-  const m=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  if(m) return m[3]+'-'+m[2].padStart(2,'0')+'-'+m[1].padStart(2,'0');
+  if(/^\d{4}-\d{1,2}-\d{1,2}$/.test(s)){
+    const [y,m,dd]=s.split('-');
+    return y+'-'+m.padStart(2,'0')+'-'+dd.padStart(2,'0');
+  }
+  const m1=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/); // DD/MM/YYYY
+  if(m1) return m1[3]+'-'+m1[2].padStart(2,'0')+'-'+m1[1].padStart(2,'0');
   return null;
+}
+// Diagnóstico: recorre las filas crudas del Excel y devuelve por qué se descartó cada una
+// que no haya entrado al mes activo, para mostrarlo en el alert en vez de fallar en silencio.
+function diagnosticarFilasDescartadas(json){
+  const motivos=[];
+  json.forEach((row,i)=>{
+    const fechaISO=fechaPlantillaAISO(row.Fecha);
+    if(!fechaISO){ motivos.push('Fila '+(i+2)+': no se pudo interpretar la fecha "'+row.Fecha+'"'); return; }
+    if(!fechaISO.startsWith(mesActivo)){ motivos.push('Fila '+(i+2)+': fecha '+fechaISO+' no pertenece al mes activo seleccionado ('+mesActivo+')'); }
+  });
+  return motivos;
 }
 
 // — Plantilla DOTACIÓN —
@@ -2027,6 +2045,12 @@ function cargarExcelDotacion(file){
       h.evAM=calcConvocatoriaDia(h)-(h.evPM||0);
       count++;
     });
+    if(count===0){
+      const motivos=diagnosticarFilasDescartadas(json);
+      alert('⚠ No se cargó ningún registro.\n\nMes activo actual: '+mesActivo+'\nFilas leídas del Excel: '+json.length+'\n\n'+
+        (motivos.length?motivos.join('\n'):'No se detectaron filas con datos. Verificá que la columna "Fecha" esté completa y que el mes activo en el encabezado de la página sea el correcto antes de subir el archivo.'));
+      return;
+    }
     finalizarCargaMasiva(count,'Carga de Dotación');
   });
   document.getElementById('fileDotacion').value='';
@@ -2064,6 +2088,12 @@ function cargarExcelTiempos(file){
       if(fD) h.finDespacho=fD;
       count++;
     });
+    if(count===0){
+      const motivos=diagnosticarFilasDescartadas(json);
+      alert('⚠ No se cargó ningún registro.\n\nMes activo actual: '+mesActivo+'\nFilas leídas del Excel: '+json.length+'\n\n'+
+        (motivos.length?motivos.join('\n'):'No se detectaron filas con datos. Verificá que la columna "Fecha" esté completa y que el mes activo en el encabezado de la página sea el correcto antes de subir el archivo.'));
+      return;
+    }
     finalizarCargaMasiva(count,'Carga de Tiempos');
   });
   document.getElementById('fileTiempos').value='';
@@ -2099,6 +2129,12 @@ function cargarExcelHistorico(file){
       if(row.Share_OBip_Porcentaje!=null && row.Share_OBip_Porcentaje!=='') h.shareObip=num(row.Share_OBip_Porcentaje)/100;
       count++;
     });
+    if(count===0){
+      const motivos=diagnosticarFilasDescartadas(json);
+      alert('⚠ No se cargó ningún registro.\n\nMes activo actual: '+mesActivo+'\nFilas leídas del Excel: '+json.length+'\n\n'+
+        (motivos.length?motivos.join('\n'):'No se detectaron filas con datos. Verificá que la columna "Fecha" esté completa y que el mes activo en el encabezado de la página sea el correcto antes de subir el archivo.'));
+      return;
+    }
     finalizarCargaMasiva(count,'Carga de Histórico');
   });
   document.getElementById('fileHistorico').value='';
