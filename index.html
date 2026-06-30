@@ -907,6 +907,14 @@ async function initFirebaseSync(){
       dataPorMes=remote.dataPorMes;
       // normalizar: asegurar que junio tenga al menos la semilla si vino vacío por algún motivo
       if(!dataPorMes[mesKey(ANIO,6)]) dataPorMes[mesKey(ANIO,6)]=estadoInicialJunio();
+      // normalizar: si julio existe pero todavía no tiene los eventos de e-commerce/retail
+      // precargados (por ejemplo, quedó guardado vacío de una sincronización anterior),
+      // se los inyectamos ahora sin tocar histData/params si ya tuviera datos cargados.
+      const julKey=mesKey(ANIO,7);
+      if(!dataPorMes[julKey]) dataPorMes[julKey]=estadoVacioMes(julKey);
+      else if(!dataPorMes[julKey].eventos || dataPorMes[julKey].eventos.length===0){
+        dataPorMes[julKey].eventos=JSON.parse(JSON.stringify(EVENTOS_ORIG_JULIO));
+      }
       Object.values(dataPorMes).forEach(m=>{ if(m.histData) m.histData.forEach(recalcDerivadosHist); });
       setSync('ok','Sincronizado');
     } else {
@@ -945,7 +953,11 @@ function buildSelectorMes(){
   const sel=document.getElementById('selectorMes');
   // Aseguramos que existan al menos Junio (con semilla real) y Julio (con semilla de eventos) como opciones
   if(!dataPorMes[mesKey(ANIO,6)]) dataPorMes[mesKey(ANIO,6)]=estadoInicialJunio();
-  if(!dataPorMes[mesKey(ANIO,7)]) dataPorMes[mesKey(ANIO,7)]=estadoVacioMes(mesKey(ANIO,7));
+  const julKey=mesKey(ANIO,7);
+  if(!dataPorMes[julKey]) dataPorMes[julKey]=estadoVacioMes(julKey);
+  else if(!dataPorMes[julKey].eventos || dataPorMes[julKey].eventos.length===0){
+    dataPorMes[julKey].eventos=JSON.parse(JSON.stringify(EVENTOS_ORIG_JULIO));
+  }
   const keys=Object.keys(dataPorMes).sort();
   sel.innerHTML=keys.map(k=>{
     const mm=+k.split('-')[1];
