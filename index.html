@@ -237,7 +237,7 @@ tr.peak td{background:#fffbee}
             <th class="go sep">Palet.</th><th class="go">Etiq/S</th>
             <th class="gpm sep">Conv.<br>PM</th><th class="gpm">Ausen.<br>PM</th><th class="gpm">Pres.<br>PM</th>
             <th class="gt sep">Var/5S</th><th class="gt">Ausen.<br>AM</th>
-            <th class="gx sep">Conv.<br>AM</th><th class="gx">Pres.<br>AM</th><th class="gx">GGP<br>est.</th>
+            <th class="gx sep">Convoc.<br>Día</th><th class="gx">Pres.<br>AM</th><th class="gx">GGP<br>est.</th>
           </tr>
         </thead>
         <tbody id="dotBody"></tbody>
@@ -641,6 +641,29 @@ const EVENTOS_ORIG_JUNIO=[
   {fecha:'2026-06-19',desc:'Pico Día del Padre',factor:1.25,tipo:'peak',activo:true},
 ];
 
+// ── EVENTOS DE E-COMMERCE / RETAIL — JULIO 2026 (Argentina) ──────────────────
+// Basado en calendario comercial real de Argentina: feriado nacional (9 de julio,
+// Día de la Independencia), Día del Niño (segundo domingo de agosto cae fuera del
+// mes pero genera pre-pico en la última semana de julio), Día del Amigo (20/07,
+// lunes en 2026 — sin impacto logístico relevante, es social/no e-commerce),
+// vacaciones de invierno (mediados de julio, suele bajar volumen B2B y subir ocio/indumentaria),
+// y la práctica habitual de Cyber/Mid-year sales de varias plataformas en la 2da quincena.
+const EVENTOS_ORIG_JULIO=[
+  {fecha:'2026-07-09',desc:'Día de la Independencia (feriado nacional)',factor:0,tipo:'holiday',activo:true},
+  {fecha:'2026-07-08',desc:'Pre-feriado 9 de Julio',factor:1.10,tipo:'event',activo:true},
+  {fecha:'2026-07-10',desc:'Post-feriado — recupero de volumen',factor:1.08,tipo:'event',activo:true},
+  {fecha:'2026-07-13',desc:'Inicio vacaciones de invierno — sube indumentaria/ocio',factor:1.06,tipo:'event',activo:true},
+  {fecha:'2026-07-14',desc:'Semana vacaciones de invierno',factor:1.07,tipo:'event',activo:true},
+  {fecha:'2026-07-15',desc:'Semana vacaciones de invierno',factor:1.07,tipo:'event',activo:true},
+  {fecha:'2026-07-16',desc:'Semana vacaciones de invierno',factor:1.05,tipo:'event',activo:true},
+  {fecha:'2026-07-17',desc:'Semana vacaciones de invierno',factor:1.05,tipo:'event',activo:true},
+  {fecha:'2026-07-25',desc:'Previa Día del Niño — pico juguetes/tecnología (segunda quincena)',factor:1.15,tipo:'peak',activo:true},
+  {fecha:'2026-07-27',desc:'Semana previa Día del Niño',factor:1.20,tipo:'peak',activo:true},
+  {fecha:'2026-07-28',desc:'Semana previa Día del Niño',factor:1.22,tipo:'peak',activo:true},
+  {fecha:'2026-07-29',desc:'Pico Día del Niño (segundo domingo de agosto cae 09/08; arranca el ramp-up)',factor:1.25,tipo:'peak',activo:true},
+  {fecha:'2026-07-30',desc:'Cierre de mes — sostenido por pre-Día del Niño',factor:1.18,tipo:'peak',activo:true},
+];
+
 const DEFAULT_PARAMS_FALLBACK={shareStd:0.837,shareVol:0.137,shareObip:0.025,ausAM:2,paqRuta:120,volBase:7500,
   factDia:{Lun:1.08,Mar:1.05,Mié:1.02,Jue:0.97,Vie:0.88,Sáb:0.78},
   shareSemanaTercio:{
@@ -752,11 +775,17 @@ function mesKey(yyyy,mm){ return yyyy+'-'+String(mm).padStart(2,'0'); }
 function diasEnMes(yyyy,mm){ return new Date(yyyy,mm,0).getDate(); }
 function nombreMes(mm){ return ['','Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'][mm]; }
 
-// Crea el estado vacío default para un mes nuevo (sin historial)
-function estadoVacioMes(){
+// Crea el estado vacío default para un mes nuevo (sin historial real).
+// Si el mes coincide con Julio 2026, precarga la semilla de eventos de e-commerce/retail
+// investigada para ese mes (igual criterio que se usó para Junio), de forma que el forecast
+// ya nazca afectado por esos picos/feriados aunque todavía no haya un solo día real cargado.
+function estadoVacioMes(key){
+  const eventosSemilla = (key===mesKey(ANIO,7))
+    ? JSON.parse(JSON.stringify(EVENTOS_ORIG_JULIO))
+    : [];
   return{
     histData:[],
-    eventos:[],
+    eventos:eventosSemilla,
     params:JSON.parse(JSON.stringify(DEFAULT_PARAMS_FALLBACK)),
     fcPMManual:{}
   };
@@ -782,7 +811,7 @@ let dataPorMes={}; // { '2026-06': {histData,eventos,params,fcPMManual}, '2026-0
 // pero ahora son referencias al objeto del mes activo dentro de dataPorMes.
 let histData, eventos, params, fcPMManual;
 function vincularEstadoMesActivo(){
-  if(!dataPorMes[mesActivo]) dataPorMes[mesActivo]=estadoVacioMes();
+  if(!dataPorMes[mesActivo]) dataPorMes[mesActivo]=estadoVacioMes(mesActivo);
   const m=dataPorMes[mesActivo];
   histData=m.histData; eventos=m.eventos; params=m.params; fcPMManual=m.fcPMManual;
 }
@@ -838,6 +867,23 @@ function recalcDerivadosHist(h){
   if(gnp!=null) h.gnp=gnp;
 }
 
+// Convocatoria del día (pestaña Dotación) = suma de TODAS las personas cargadas por
+// flujo (Std+Vol+OBip) + PM convocados. Es 100% derivado de las celdas de puestos.
+function calcConvocatoriaDia(h){
+  const std=h.std||{}; const volf=h.volf||{}; const obip=h.obip||{};
+  const sumStd=(std.palet||0)+(std.tolv||0)+(std.etiq||0)+(std.pesc||0)+(std.sort||0);
+  const sumVol=(volf.palet||0)+(volf.tolv||0)+(volf.etiq||0)+(volf.ps||0);
+  const sumObip=(obip.palet||0)+(obip.es||0);
+  const sumPM=h.evPM||0;
+  return sumStd+sumVol+sumObip+sumPM;
+}
+// GGP en vivo de un día histórico (pestaña Dotación) = Vol.procesado / Convocatoria Día / 7.33
+function calcGGPenVivo(h){
+  const conv=calcConvocatoriaDia(h);
+  if(!conv||conv<=0) return null;
+  return +((h.vol/conv)/GGP_DIVISOR).toFixed(2);
+}
+
 // ── SINCRONIZACIÓN CON FIRESTORE (documento único, campo dataPorMes) ─────────
 async function initFirebaseSync(){
   if(!window.fbStore){ setSync('bad','Firebase no cargó'); return; }
@@ -884,9 +930,9 @@ async function initFirebaseSync(){
 
 function buildSelectorMes(){
   const sel=document.getElementById('selectorMes');
-  // Aseguramos que existan al menos Junio (con semilla) y Julio (vacío) como opciones
+  // Aseguramos que existan al menos Junio (con semilla real) y Julio (con semilla de eventos) como opciones
   if(!dataPorMes[mesKey(ANIO,6)]) dataPorMes[mesKey(ANIO,6)]=estadoInicialJunio();
-  if(!dataPorMes[mesKey(ANIO,7)]) dataPorMes[mesKey(ANIO,7)]=estadoVacioMes();
+  if(!dataPorMes[mesKey(ANIO,7)]) dataPorMes[mesKey(ANIO,7)]=estadoVacioMes(mesKey(ANIO,7));
   const keys=Object.keys(dataPorMes).sort();
   sel.innerHTML=keys.map(k=>{
     const mm=+k.split('-')[1];
@@ -1231,7 +1277,6 @@ function editDotCell(fechaISO, grupo, campo, val){
   const h=histData[idx];
   const num=Math.max(0, +val||0);
   if(grupo==='vol'){ h.vol=num; if(!h.volProy)h.volProy=num; if(!h.volRut)h.volRut=num; }
-  else if(grupo==='evAM'){ h.evAM=num; }
   else if(grupo==='ausAM'){ h.ausAM=num; }
   else if(grupo==='evPM'){ h.evPM=num; }
   else if(grupo==='ausPM'){ h.ausPM=num; }
@@ -1239,6 +1284,10 @@ function editDotCell(fechaISO, grupo, campo, val){
   else if(grupo==='std'){ h.std=h.std||{}; h.std[campo]=num; }
   else if(grupo==='volf'){ h.volf=h.volf||{}; h.volf[campo]=num; }
   else if(grupo==='obip'){ h.obip=h.obip||{}; h.obip[campo]=num; }
+  // Ev.AM ya no se edita directo: se sincroniza siempre con la Convocatoria Día
+  // (suma de personas por flujo Std+Vol+OBip, SIN contar PM que es categoría aparte
+  // a efectos de evAM "puro" — el PM se suma aparte en GGP/GNP vía presentesPM).
+  h.evAM = calcConvocatoriaDia(h) - (h.evPM||0);
   recalcDerivadosHist(h);
   saveAll();
   compute();
@@ -1281,6 +1330,9 @@ function renderDotacionTab(rows){
       const fechaISO=r.hist.d;
       const ausPM=r.hist.ausPM||0;
       const presPM=(r.evPM||0)-ausPM;
+      const convocatoriaDia=calcConvocatoriaDia(r.hist);
+      const ggpVivo=calcGGPenVivo(r.hist);
+      const ggpVivoColor=(ggpVivo!=null && ggpVivo>=params.GGP)?'#27ae60':(ggpVivo!=null?'#e74c3c':'#aaa');
       tr.innerHTML=`<td class="left">${diaLabel(r)}<sup style="color:#1a5fa8;font-size:8px"> H</sup></td>
         <td>${r.dnom}</td>
         <td>${inp(fechaISO,'vol',null,r.vol,46)}</td>
@@ -1300,9 +1352,9 @@ function renderDotacionTab(rows){
         <td class="pm" style="font-weight:600">${presPM}</td>
         <td class="gt sep">${inp(fechaISO,'varias',null,r.hist.varias||0,30)}</td>
         <td class="gt">${inp(fechaISO,'ausAM',null,r.ausAM,30)}</td>
-        <td class="sep" style="font-weight:700;color:#1a2e4a">${inp(fechaISO,'evAM',null,r.evAM,40)}</td>
+        <td class="sep" style="font-weight:700;color:#1a2e4a" title="Suma automática de todas las personas por flujo + PM">${convocatoriaDia}</td>
         <td style="color:#27ae60">${dot.presentes}</td>
-        <td style="font-weight:700;color:${ggpColor}">${dot.ggpEst}</td>`;
+        <td style="font-weight:800;color:${ggpVivoColor}" title="Vol.procesado / Convocatoria Día / 7.33">${ggpVivo??'—'}</td>`;
     } else {
       if(r.tipo==='peak')tr.className='peak';
       const f=v=>v===0?'<span style="color:#ccc">0</span>':v;
@@ -1877,7 +1929,7 @@ function exportCSV(){
 // ── INIT ──────────────────────────────────────────────────────────────────────
 window.addEventListener('firebase-ready', initFirebaseSync);
 setTimeout(()=>{ if(!fbReady){
-  dataPorMes={ [mesKey(ANIO,6)]: estadoInicialJunio(), [mesKey(ANIO,7)]: estadoVacioMes() };
+  dataPorMes={ [mesKey(ANIO,6)]: estadoInicialJunio(), [mesKey(ANIO,7)]: estadoVacioMes(mesKey(ANIO,7)) };
   vincularEstadoMesActivo();
   buildSelectorMes(); updateUI(); buildFactDiaUI(); compute();
   if(!window.fbStore) setSync('bad','Sin conexión a Firebase');
