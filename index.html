@@ -494,32 +494,9 @@ body.solo-lectura #tab-simulador select{
       <div class="info-box" style="margin-bottom:0">GGP = Volumen ÷ (Presentes AM + Presentes PM) ÷ <strong>Horas de turno</strong> (parámetro de arriba, actualmente <strong id="ggpDivInfo">8</strong>). GNP aplica el DS% sobre ese mismo cálculo. Si cambiás las horas de turno, todos los GGP/GNP (reales y estimados) se recalculan con el nuevo valor.</div>
     </div>
     <div class="card">
-      <div class="card-title">Shares por flujo — estimado histórico (solo lectura)</div>
-      <div class="form-grid">
-        <div class="form-group"><label>Share Standard %</label>
-          <input type="text" id="shareStd" class="readonly-field" readonly disabled></div>
-        <div class="form-group"><label>Share Voluminoso %</label>
-          <input type="text" id="shareVol" class="readonly-field" readonly disabled></div>
-        <div class="form-group"><label>Share One Bip %</label>
-          <input type="text" id="shareObip" class="readonly-field" readonly disabled></div>
-      </div>
-      <span class="hint">Calculado como el promedio de %Std/%Vol/%OBip de todos los días históricos cargados en el mes activo.</span>
-    </div>
-    <div class="card">
       <div class="card-title">Eventuales PM — sugerencia (no afecta el cálculo automático)</div>
       <div class="info-box" style="margin-bottom:0">
-        Los Eventuales PM se indican manualmente día por día (en Forecast/Dotación) o en el Simulador.<br>
-        <strong>Sugerencia según histórico:</strong> <span id="sugerenciaPM">—</span>
-      </div>
-    </div>
-    <div class="card">
-      <div class="card-title">Umbrales de Operaciones Varias / 5S</div>
-      <div class="info-box" style="margin-bottom:10px">Las Op. Varias/5S solo se ejecutan en turno PM. Si Ev.PM = 0 ese día, no se asigna personal a esta tarea ni se cuenta en la dotación estimada.</div>
-      <div class="form-grid">
-        <div class="form-group"><label>Umbral Varias ≥ 1 persona</label>
-          <input type="number" id="umbVar1" step="100" onchange="params.umbralVarias1=+this.value;saveAndCompute()"></div>
-        <div class="form-group"><label>Umbral Varias ≥ 2 personas</label>
-          <input type="number" id="umbVar2" step="100" onchange="params.umbralVarias2=+this.value;saveAndCompute()"></div>
+        Los Eventuales PM se indican manualmente día por día (en Forecast/Dotación) o en el Simulador.
       </div>
     </div>
     <div class="card">
@@ -759,9 +736,9 @@ const DEFAULT_PARAMS_FALLBACK={shareStd:0.837,shareVol:0.137,shareObip:0.025,aus
   },
   rStd:{palet:0.08,tolv:0.145,etiq:0.215,pesc:0.225,sort:0.25},
   rVol:{palet:0.12,tolv:0.185,etiq:0.185,ps:0.51},rObip:{palet:0.3,es:0.7},
-  avgDS:0.98,sugerenciaUmbralPM1:null,sugerenciaUmbralPM2:null,GGP:41,cobAM:95,
-  horasTurno:8,ausPM:0,umbralVarias1:7000,umbralVarias2:9000,
-  dsObjetivo:0.98,factorRuteo:1.003,backlogProm:0};
+  avgDS:0.98,GGP:41,cobAM:95,
+  horasTurno:7.33,ausPM:0,
+  dsObjetivo:0.99,factorRuteo:1.003,backlogProm:0};
 
 const GGP_DIVISOR=7.33; // fallback si el mes todavía no tiene parámetros propios (no debería pasar)
 // GGP/GNP se calculan como vol / presentes / horasTurno: usamos el parámetro configurable
@@ -875,19 +852,13 @@ function calibrateFromHist(hist,base){
   h.forEach(r=>{const o=r.obip;const tot=o.palet+o.es||1;rObip.palet+=o.palet/tot;rObip.es+=o.es/tot;});
   Object.keys(rObip).forEach(k=>rObip[k]/=h.length);
   const avgDS=h.reduce((s,r)=>s+r.ds,0)/h.length;
-  const pmDays=h.filter(r=>r.evPM>0);
-  const sugerenciaUmbralPM1=pmDays.length?Math.round(pmDays.reduce((s,r)=>s+r.vol,0)/pmDays.length*0.9):null;
-  const sugerenciaUmbralPM2=pmDays.filter(r=>r.evPM>=2).length?
-    Math.round(pmDays.filter(r=>r.evPM>=2).reduce((s,r)=>s+r.vol,0)/pmDays.filter(r=>r.evPM>=2).length*0.9):null;
 
   // Mezcla con la calibración base (mes anterior / default) según cuántos días reales
   // propios ya tenemos: con 0 días reales se usaría 100% base (ya cubierto arriba), y a
   // partir de DIAS_CONFIANZA_CALIBRACION días reales, 100% propio.
   const w=Math.min(1,h.length/DIAS_CONFIANZA_CALIBRACION);
   return{
-    shareStd:blendNum(base.shareStd,shareStd,w),
-    shareVol:blendNum(base.shareVol,shareVol,w),
-    shareObip:blendNum(base.shareObip,shareObip,w),
+    shareStd,shareVol,shareObip,
     ausAM:+blendNum(base.ausAM,ausAM,w).toFixed(1),
     paqRuta:Math.round(blendNum(base.paqRuta,paqRuta,w)),
     volBase:Math.round(blendNum(base.volBase,volBase,w)),
@@ -895,11 +866,9 @@ function calibrateFromHist(hist,base){
     shareSemanaTercio:blendTercios(base.shareSemanaTercio,shareSemanaTercio,w),
     rStd:blendDia(base.rStd,rStd,w),rVol:blendDia(base.rVol,rVol,w),rObip:blendDia(base.rObip,rObip,w),
     avgDS:blendNum(base.avgDS,avgDS,w),
-    sugerenciaUmbralPM1,sugerenciaUmbralPM2,
     GGP:base.GGP??41,cobAM:base.cobAM??95,
-    horasTurno:base.horasTurno??8,ausPM:base.ausPM??0,
-    umbralVarias1:base.umbralVarias1??7000,umbralVarias2:base.umbralVarias2??9000,
-    dsObjetivo:base.dsObjetivo??0.98,factorRuteo:base.factorRuteo??1.003,backlogProm:base.backlogProm??0};
+    horasTurno:base.horasTurno??7.33,ausPM:base.ausPM??0,
+    dsObjetivo:base.dsObjetivo??0.99,factorRuteo:base.factorRuteo??1.003,backlogProm:base.backlogProm??0};
 }
 
 function mesKey(yyyy,mm){ return yyyy+'-'+String(mm).padStart(2,'0'); }
@@ -1182,8 +1151,6 @@ function recalibrateHistDerived(){
   params.rVol=cal.rVol;
   params.rObip=cal.rObip;
   params.avgDS=cal.avgDS;
-  params.sugerenciaUmbralPM1=cal.sugerenciaUmbralPM1;
-  params.sugerenciaUmbralPM2=cal.sugerenciaUmbralPM2;
 }
 function saveAll(){
   if(suppressSave) return;
@@ -1234,21 +1201,12 @@ function updateUI(){
   s('slCob',params.cobAM);t('valCob',params.cobAM+'%');
   s('valVolBase',(params.volBase||0).toLocaleString('es-AR')+' paq');
   s('slAus',params.ausAM);t('valAus',params.ausAM+'%');
-  s('slHoras',params.horasTurno??8);t('valHoras',(+(params.horasTurno??8)).toFixed(1)+' hs');
-  t('ggpDivInfo',(+(params.horasTurno??8)).toFixed(1));
+  s('slHoras',params.horasTurno??7.33);t('valHoras',(+(params.horasTurno??7.33)).toFixed(2)+' hs');
+  t('ggpDivInfo',(+(params.horasTurno??7.33)).toFixed(2));
   s('slAusPM',params.ausPM??0);t('valAusPM',(params.ausPM??0)+'%');
-  s('umbVar1',params.umbralVarias1??7000);s('umbVar2',params.umbralVarias2??9000);
-  s('dsObjetivo',((params.dsObjetivo??0.98)*100).toFixed(1));
+  s('dsObjetivo',((params.dsObjetivo??0.99)*100).toFixed(0));
   s('factorRuteo',params.factorRuteo??1.003);
   s('backlogProm',params.backlogProm??0);
-  s('shareStd',(params.shareStd*100).toFixed(1)+'%  (estimado histórico)');
-  s('shareVol',(params.shareVol*100).toFixed(1)+'%  (estimado histórico)');
-  s('shareObip',(params.shareObip*100).toFixed(1)+'%  (estimado histórico)');
-  const sugTxt = (params.sugerenciaUmbralPM1!=null)
-    ? `A partir de ~${params.sugerenciaUmbralPM1.toLocaleString('es-AR')} paq suele requerirse 1 persona PM`+
-      (params.sugerenciaUmbralPM2!=null?`, y desde ~${params.sugerenciaUmbralPM2.toLocaleString('es-AR')} paq, 2 personas.`:'.')
-    : 'Aún no hay suficientes días históricos con turno PM para sugerir un umbral.';
-  t('sugerenciaPM', sugTxt);
 }
 
 function buildFactDiaUI(){
@@ -1272,12 +1230,15 @@ function calcDotacion(vol, evPM=0, ggpObjetivoOverride=null){
   const r=params.rStd||DEFAULT_PARAMS_FALLBACK.rStd;
   const rv=params.rVol||DEFAULT_PARAMS_FALLBACK.rVol;
   const ro=params.rObip||DEFAULT_PARAMS_FALLBACK.rObip;
+  const ss=params.shareStd||DEFAULT_PARAMS_FALLBACK.shareStd||0.837;
+  const sv=params.shareVol||DEFAULT_PARAMS_FALLBACK.shareVol||0.137;
+  const so=params.shareObip||DEFAULT_PARAMS_FALLBACK.shareObip||0.025;
   const ggpObj=ggpObjetivoOverride!=null?ggpObjetivoOverride:params.GGP;
-  const horas=params.horasTurno||8;
+  const horas=params.horasTurno||7.33;
   const totalAM=Math.ceil(vol*(params.cobAM/100)/(ggpObj*horas));
-  const pStd=Math.round(totalAM*params.shareStd);
-  const pVol=Math.round(totalAM*params.shareVol);
-  const pObip=Math.max(1,Math.round(totalAM*params.shareObip));
+  const pStd=Math.round(totalAM*ss);
+  const pVol=Math.round(totalAM*sv);
+  const pObip=Math.max(1,Math.round(totalAM*so));
   const std={
     palet:Math.max(0,Math.round(pStd*r.palet)),
     tolv:Math.max(1,Math.round(pStd*r.tolv)),
@@ -1295,17 +1256,16 @@ function calcDotacion(vol, evPM=0, ggpObjetivoOverride=null){
   const stdTotal=std.palet+std.tolv+std.etiq+std.pesc+std.sort;
   const volTotal=volf.palet+volf.tolv+volf.etiq+volf.ps;
   const obipTotal=obip.palet+obip.es;
-  const uv1=params.umbralVarias1??7000, uv2=params.umbralVarias2??9000;
-  const varias=(evPM>0) ? (vol>=uv2?2:vol>=uv1?1:0) : 0;
+  // Op. Varias/5S ya no dependen de umbrales de volumen; siempre son 0 en este modelo.
+  const varias=0;
   const ausentes=Math.round(totalAM*(params.ausAM/100));
   const presentes=totalAM-ausentes;
   const ausPMpct=params.ausPM||0;
   const ausentesPM=Math.round(evPM*(ausPMpct/100));
   const presentesPM=evPM-ausentesPM;
   const totalPresentesAMPM=presentes+presentesPM;
-  // GGP/GNP usan SIEMPRE la constante fija 7.33 (no las horas de turno configurables)
   const ggpEst=totalPresentesAMPM>0?+(vol/totalPresentesAMPM/ggpDivisor()).toFixed(1):0;
-  const gnpEst=totalPresentesAMPM>0?+((vol*(params.avgDS||0.98))/totalPresentesAMPM/ggpDivisor()).toFixed(1):0;
+  const gnpEst=totalPresentesAMPM>0?+((vol*(params.avgDS||0.99))/totalPresentesAMPM/ggpDivisor()).toFixed(1):0;
   return{totalAM,std,volf,obip,stdTotal,volTotal,obipTotal,varias,ausentes,presentes,
     evPM,ausentesPM,presentesPM,totalPresentesAMPM,
     grandTotal:totalAM,ggpEst,gnpEst};
@@ -1347,12 +1307,12 @@ function computeDay(d,dow){
   // Backlog promedio (paquetes pendientes de días anteriores que se suman al volumen a
   // procesar del día): parámetro configurable en Parámetros, antes definido pero no usado.
   if(params.backlogProm) vol=Math.max(0,Math.round(vol+params.backlogProm));
-  const evAM=Math.ceil(vol*(params.cobAM/100)/(params.GGP*(params.horasTurno||8)));
+  const evAM=Math.ceil(vol*(params.cobAM/100)/(params.GGP*(params.horasTurno||7.33)));
   const ausAM=Math.round(evAM*(params.ausAM/100));
   const evPM=fcPMManual[d]??0;
   const rutas=Math.ceil(vol*(params.factorRuteo||1.003)/paqRutaSeguro());
   const dot=calcDotacion(vol,evPM);
-  const dsEst=+(params.avgDS||0.982);
+  const dsEst=+(params.avgDS||0.992);
   return{d,dnom,vol,volProy:vol,evAM,evPM,ausAM,presentes:evAM-ausAM,rutas,
     ggpReal:null,ds:dsEst,tipo,evento:eventoLabel,dot,hist:null};
 }
@@ -1460,9 +1420,11 @@ function renderMetrics(rows){
   const avgAus=h.length?(h.reduce((s,r)=>s+(r.ausAM/(r.evAM||1)),0)/h.length*100).toFixed(1)+'%':'-';
   document.getElementById('metricsRow').innerHTML=`
     <div class="metric"><div class="metric-label">Vol. prom. real</div><div class="metric-value">${avgVol.toLocaleString('es-AR')}</div><div class="metric-sub">paq/día (${h.length} días)</div></div>
+    <div class="metric"><div class="metric-label">Vol. total real</div><div class="metric-value">${totalVolReal.toLocaleString('es-AR')}</div><div class="metric-sub">paquetes procesados</div></div>
     <div class="metric"><div class="metric-label">GGP real prom.</div><div class="metric-value">${avgGGP}</div><div class="metric-sub">obj. ${params.GGP}</div></div>
     <div class="metric"><div class="metric-label">Día pico (mes)</div><div class="metric-value">${maxR.d?diaLabel(maxR):'—'}</div><div class="metric-sub">${maxR.vol.toLocaleString('es-AR')} paq</div></div>
     <div class="metric"><div class="metric-label">Total AM mes (real+est.)</div><div class="metric-value">${totalAMmes}</div><div class="metric-sub">convocatorias</div></div>
+    <div class="metric"><div class="metric-label">Rutas totales real</div><div class="metric-value">${totalRutasReal}</div><div class="metric-sub">camionetas operadas</div></div>
     <div class="metric"><div class="metric-label">Ausen. AM prom.</div><div class="metric-value">${avgAus}</div><div class="metric-sub">histórico</div></div>
     <div class="metric"><div class="metric-label">Días operativos</div><div class="metric-value">${ops.length}</div><div class="metric-sub">en el mes</div></div>`;
 
@@ -1542,7 +1504,7 @@ function addHistRowFromDotacion(){
   if(!fecha.startsWith(mesActivo)) return alert('La fecha debe pertenecer al mes activo seleccionado ('+mesActivo+').');
   if(histIdxByFecha(fecha)>=0) return alert('Ya existe un registro para esa fecha. Editalo directamente en la tabla.');
   const nuevo={d:fecha,volProy:0,vol:0,volRut:0,rutas:0,evAM:0,ausAM:0,evPM:0,ausPM:0,
-    ggpCliente:null,ggpReal:null,gnp:null,ds:params.avgDS||0.98,backlog:0,
+    ggpCliente:null,ggpReal:null,gnp:null,ds:params.avgDS||0.99,backlog:0,
     inicioRuteo:'',inicioProceso:'',finProceso:'',inicioDespacho:'08:00',finDespacho:'',
     shareStd:params.shareStd,shareVol:params.shareVol,shareObip:params.shareObip,
     std:{palet:0,tolv:0,etiq:0,pesc:0,sort:0},
@@ -1717,7 +1679,7 @@ function registrarTiempoReal(){
     histData[idx].finDespacho=fDesp;
   } else {
     const nuevo={d:fecha,volProy:0,vol:0,volRut:0,rutas:0,evAM:0,ausAM:0,evPM:0,ausPM:0,
-      ggpCliente:null,ggpReal:null,gnp:null,ds:params.avgDS||0.98,backlog:0,
+      ggpCliente:null,ggpReal:null,gnp:null,ds:params.avgDS||0.99,backlog:0,
       inicioRuteo:iRuteo,inicioProceso:iProc,finProceso:fProc,inicioDespacho:iDesp,finDespacho:fDesp,
       shareStd:params.shareStd,shareVol:params.shareVol,shareObip:params.shareObip,
       std:{palet:0,tolv:0,etiq:0,pesc:0,sort:0},
@@ -1867,7 +1829,7 @@ function renderProductividadTab(rows){
     ]},options:opt2('GGP/GNP (estimado)','',false)});
     mk('chartDS',{type:'line',data:{labels:labelsFc,datasets:[
       {label:'DS% estimado',data:dsEstArr,borderColor:'#27ae60',backgroundColor:'rgba(39,174,96,.1)',pointRadius:3,fill:true,tension:0.3,borderDash:[4,3]},
-      {label:'Objetivo '+(((params.dsObjetivo??0.98)*100).toFixed(0))+'%',data:labelsFc.map(()=>(params.dsObjetivo??0.98)*100),borderColor:'#e74c3c',borderDash:[4,3],borderWidth:2,pointRadius:0,backgroundColor:'transparent'}
+      {label:'Objetivo '+(((params.dsObjetivo??0.99)*100).toFixed(0))+'%',data:labelsFc.map(()=>(params.dsObjetivo??0.99)*100),borderColor:'#e74c3c',borderDash:[4,3],borderWidth:2,pointRadius:0,backgroundColor:'transparent'}
     ]},options:opt2('DS % (estimado)','',false)});
     mk('chartAus',{type:'bar',data:{labels:labelsFc,datasets:[
       {label:'Ausentismo AM % (estimado)',data:ausEstArr,backgroundColor:ausEstArr.map(v=>v>5?'#e74c3c':v>2?'#d68910':'#27ae60')}
@@ -1893,7 +1855,7 @@ function renderProductividadTab(rows){
   ]},options:opt2('GGP/GNP','',false)});
   mk('chartDS',{type:'line',data:{labels,datasets:[
     {label:'DS%',data:ds,borderColor:'#27ae60',backgroundColor:'rgba(39,174,96,.1)',pointRadius:4,fill:true,tension:0.3},
-    {label:'Objetivo '+(((params.dsObjetivo??0.98)*100).toFixed(0))+'%',data:labels.map(()=>(params.dsObjetivo??0.98)*100),borderColor:'#e74c3c',borderDash:[4,3],borderWidth:2,pointRadius:0,backgroundColor:'transparent'}
+    {label:'Objetivo '+(((params.dsObjetivo??0.99)*100).toFixed(0))+'%',data:labels.map(()=>(params.dsObjetivo??0.99)*100),borderColor:'#e74c3c',borderDash:[4,3],borderWidth:2,pointRadius:0,backgroundColor:'transparent'}
   ]},options:opt2('DS (%)','',false)});
   mk('chartAus',{type:'bar',data:{labels,datasets:[
     {label:'Ausentismo AM %',data:aus,backgroundColor:aus.map(v=>v>5?'#e74c3c':v>2?'#d68910':'#27ae60')}
@@ -1913,7 +1875,7 @@ function renderProductividadTab(rows){
       <td>${hi.ggpCliente?.toFixed(2)||'—'}</td>
       <td style="color:${hi.ggpReal>=params.GGP?'#27ae60':'#e74c3c'};font-weight:700">${hi.ggpReal?.toFixed(2)||'—'}</td>
       <td>${hi.gnp?.toFixed(2)||'—'}</td>
-      <td style="color:${hi.ds>=0.98?'#27ae60':'#e74c3c'}">${(hi.ds*100).toFixed(1)}%</td>`;
+      <td style="color:${hi.ds>=0.99?'#27ae60':'#e74c3c'}">${(hi.ds*100).toFixed(1)}%</td>`;
     tb.appendChild(tr);
   });
 
@@ -1926,7 +1888,7 @@ function renderProductividadTab(rows){
     <div class="metric"><div class="metric-label">GGP real prom.</div><div class="metric-value" style="color:${avgGGPr>=params.GGP?'#27ae60':'#e74c3c'}">${avgGGPr.toFixed(1)}</div><div class="metric-sub">obj. ${params.GGP}</div></div>
     <div class="metric"><div class="metric-label">GGP cliente prom.</div><div class="metric-value">${avgGGPc.toFixed(1)}</div><div class="metric-sub">reportado cliente</div></div>
     <div class="metric"><div class="metric-label">GNP prom.</div><div class="metric-value">${avgGNP.toFixed(1)}</div><div class="metric-sub">neto</div></div>
-    <div class="metric"><div class="metric-label">DS% prom.</div><div class="metric-value" style="color:${avgDS>=0.98?'#27ae60':'#e74c3c'}">${(avgDS*100).toFixed(1)}%</div><div class="metric-sub">obj. ${((params.dsObjetivo??0.98)*100).toFixed(0)}%</div></div>
+    <div class="metric"><div class="metric-label">DS% prom.</div><div class="metric-value" style="color:${avgDS>=0.99?'#27ae60':'#e74c3c'}">${(avgDS*100).toFixed(1)}%</div><div class="metric-sub">obj. ${((params.dsObjetivo??0.99)*100).toFixed(0)}%</div></div>
     <div class="metric"><div class="metric-label">Ausentismo AM prom.</div><div class="metric-value" style="color:${avgAus>5?'#e74c3c':'#27ae60'}">${avgAus.toFixed(1)}%</div><div class="metric-sub">real histórico</div></div>
     <div class="metric"><div class="metric-label">Diferencia GGP real–obj</div><div class="metric-value" style="color:${avgGGPr>=params.GGP?'#27ae60':'#e74c3c'}">${(avgGGPr-params.GGP).toFixed(1)}</div><div class="metric-sub">prom. histórico</div></div>`;
 
@@ -1937,7 +1899,7 @@ function renderProductividadTab(rows){
 // el mes activo todavía no tenga ni un día real cargado — ver estadoVacioMes/recalibrateHistDerived).
 function renderProductividadForecast(fc){
   const tbFc=document.getElementById('shareFcBody');tbFc.innerHTML='';
-  const dsEst=params.avgDS||0.98;
+  const dsEst=params.avgDS||0.99;
   fc.forEach(r=>{
     const dot=r.dot;
     const ggpEst=dot?dot.ggpEst:params.GGP;
@@ -1998,7 +1960,7 @@ function addHistRow(){
   if(!fecha||!/^\d{4}-\d{2}-\d{2}$/.test(fecha))return alert('Formato inválido.');
   if(!fecha.startsWith(mesActivo))return alert('La fecha debe pertenecer al mes activo ('+mesActivo+').');
   const nuevo={d:fecha,volProy:0,vol:0,volRut:0,rutas:0,evAM:0,ausAM:0,evPM:0,ausPM:0,
-    ggpCliente:null,ggpReal:null,gnp:null,ds:0.98,backlog:0,
+    ggpCliente:null,ggpReal:null,gnp:null,ds:0.99,backlog:0,
     inicioRuteo:'',inicioProceso:'',finProceso:'',inicioDespacho:'08:00',finDespacho:'',
     shareStd:params.shareStd,shareVol:params.shareVol,shareObip:params.shareObip,
     std:{palet:0,tolv:0,etiq:0,pesc:0,sort:0},
@@ -2048,7 +2010,7 @@ function clearEventoForm(){['evFecha','evDesc'].forEach(id=>document.getElementB
 
 // ── SIMULADOR TOP-DOWN ────────────────────────────────────────────────────────
 function calcDespachoTandas(rutas){
-  const POSICIONES=106, MIN_POR_TANDA=23, MIN_POSICIONAMIENTO=2, CAMIONETAS_POR_MIN=3;
+  const POSICIONES=106, MIN_POR_TANDA=21, MIN_POSICIONAMIENTO=2, CAMIONETAS_POR_MIN=3;
   const tandas=Math.max(1,Math.ceil(rutas/POSICIONES));
   const camionetasUltimaTanda = rutas - (tandas-1)*POSICIONES;
   const tiempoLlenadoTandaLlena = POSICIONES / CAMIONETAS_POR_MIN;
@@ -2063,7 +2025,7 @@ function calcDespachoTandas(rutas){
 function calcHorariosSimulados(vol,rutas){
   const APERTURA_IDEAL=8*60;
   const APERTURA_MAX=8*60+15;
-  const MARGEN_BUSQUEDA=15;
+  const MARGEN_BUSQUEDA=30;
 
   const hists=histData.filter(h=>h.vol>0 && h.inicioProceso && h.finProceso);
   const ptsProc=hists.map(h=>{const dur=timeToMin(h.finProceso)-timeToMin(h.inicioProceso);return{vol:h.vol,dur};}).filter(p=>isFinite(p.dur));
@@ -2103,7 +2065,7 @@ function runSimulador(){
   const ggpInput=document.getElementById('simGGP').value;
   const ggpSim = ggpInput!==''? +ggpInput : params.GGP;
   const hayPM=document.getElementById('simHayPM').checked;
-  const horas=params.horasTurno||8;
+  const horas=params.horasTurno||7.33;
   const volPM = hayPM ? Math.max(0,+document.getElementById('simVolPM').value||0) : 0;
   const ggpPMinput=document.getElementById('simGGPPM').value;
   const ggpPMsim = hayPM ? (ggpPMinput!==''? +ggpPMinput : params.GGP) : 0;
@@ -2122,7 +2084,7 @@ function runSimulador(){
   const ausentesPMsim=Math.round(evPMsim*((params.ausPM||0)/100));
   const presentesPMsim=evPMsim-ausentesPMsim;
   const ggpPMresultante = presentesPMsim>0 ? +(volPM/presentesPMsim/horas).toFixed(1) : 0;
-  const gnpPMresultante = presentesPMsim>0 ? +((volPM*(params.avgDS||0.98))/presentesPMsim/horas).toFixed(1) : 0;
+  const gnpPMresultante = presentesPMsim>0 ? +((volPM*(params.avgDS||0.99))/presentesPMsim/horas).toFixed(1) : 0;
 
   const f=v=>v===0?'<span style="color:#ccc">0</span>':v;
   const fmtH=m=>minToHM(m);
@@ -2136,7 +2098,7 @@ function runSimulador(){
       <div class="metric"><div class="metric-label">Eventuales PM (calculado)</div><div class="metric-value">${dot.evPM}</div><div class="metric-sub">${hayPM?volPM.toLocaleString('es-AR')+' paq @ GGP '+ggpPMsim:'sin turno PM'}</div></div>
       <div class="metric"><div class="metric-label">Op. Varias / 5S</div><div class="metric-value">${dot.varias}</div><div class="metric-sub">${dot.evPM>0?'según umbrales de volumen':'0 — requiere turno PM'}</div></div>
       <div class="metric"><div class="metric-label">GGP AM estimado resultante</div><div class="metric-value" style="color:${dot.ggpEst>=ggpSim?'#27ae60':'#e74c3c'}">${dot.ggpEst}</div><div class="metric-sub">vol AM+PM / presentes AM+PM / horas turno</div></div>
-      <div class="metric"><div class="metric-label">GNP estimado resultante</div><div class="metric-value">${dot.gnpEst}</div><div class="metric-sub">aplicando DS% histórico ${((params.avgDS||0.98)*100).toFixed(1)}%</div></div>
+      <div class="metric"><div class="metric-label">GNP estimado resultante</div><div class="metric-value">${dot.gnpEst}</div><div class="metric-sub">aplicando DS% histórico ${((params.avgDS||0.99)*100).toFixed(1)}%</div></div>
     </div>
 
     ${hayPM?`
@@ -2208,7 +2170,7 @@ function runSimulador(){
           </tr>
         </tbody>
       </table></div>
-      <span class="hint">Cálculo hacia atrás desde la apertura ideal (08:00): fin de proceso + 15 min de margen de búsqueda = inicio de despacho. La duración de proceso usa la regresión volumen→duración calibrada con el historial real del mes activo; el inicio de ruteo se ubica ${horarios.offsetRuteoProceso} min antes del inicio de proceso. El despacho considera el ingreso de camionetas a razón de ${horarios.camionetasPorMin}/min hasta llenar las 106 posiciones (~${horarios.tiempoLlenadoTandaLlena} min por tanda llena), + ${horarios.minPosicionamiento} min de posicionamiento, + 23 min de carga por unidad, en ${horarios.tandas} tanda(s).</span>
+      <span class="hint">Cálculo hacia atrás desde la apertura ideal (08:00): fin de proceso + 30 min de margen de búsqueda = inicio de despacho. La duración de proceso usa la regresión volumen→duración calibrada con el historial real del mes activo; el inicio de ruteo se ubica ${horarios.offsetRuteoProceso} min antes del inicio de proceso. El despacho considera el ingreso de camionetas a razón de ${horarios.camionetasPorMin}/min hasta llenar las 106 posiciones (~${horarios.tiempoLlenadoTandaLlena} min por tanda llena), + ${horarios.minPosicionamiento} min de posicionamiento, + 21 min de carga por tanda (12 seg/paquete), en ${horarios.tandas} tanda(s).</span>
     </div>
   `;
 }
@@ -2253,7 +2215,7 @@ function getOrCreateHist(fechaISO){
   let idx=histIdxByFecha(fechaISO);
   if(idx>=0) return histData[idx];
   const nuevo={d:fechaISO,volProy:0,vol:0,volRut:0,rutas:0,evAM:0,ausAM:0,evPM:0,ausPM:0,
-    ggpCliente:null,ggpReal:null,gnp:null,ds:params.avgDS||0.98,backlog:0,
+    ggpCliente:null,ggpReal:null,gnp:null,ds:params.avgDS||0.99,backlog:0,
     inicioRuteo:'',inicioProceso:'',finProceso:'',inicioDespacho:'08:00',finDespacho:'',
     shareStd:params.shareStd,shareVol:params.shareVol,shareObip:params.shareObip,
     std:{palet:0,tolv:0,etiq:0,pesc:0,sort:0},
