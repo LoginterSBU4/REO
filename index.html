@@ -10,6 +10,9 @@
   import {
     getFirestore, doc, getDoc, setDoc, onSnapshot, serverTimestamp
   } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+  import {
+    getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut
+  } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 
   const firebaseConfig = {
     apiKey: "AIzaSyCZCZye_jKxHYpfMFaOwrX4eWv8mRuAQs0",
@@ -22,6 +25,7 @@
 
   const app = initializeApp(firebaseConfig);
   const db = getFirestore(app);
+  const auth = getAuth(app);
   // Un único documento contiene TODOS los meses, en el campo dataPorMes.
   const DOC_REF = doc(db, "forecast", "multiMes2026");
 
@@ -50,6 +54,36 @@
       }, (err) => console.error("Firestore listen error:", err));
     }
   };
+
+  // ── Autenticación básica: cualquiera puede leer (ver) el forecast sin loguearse.
+  // Sólo una cuenta marcada como admin (documento en la colección "admins", con el UID
+  // de Firebase Auth como ID de documento) puede escribir. Ver reglas de Firestore.
+  window.fbAuth = {
+    async login(email, password){
+      try{
+        await signInWithEmailAndPassword(auth, email, password);
+        return { ok:true };
+      }catch(e){
+        console.error("Login error:", e);
+        return { ok:false, error: e.code || e.message };
+      }
+    },
+    async logout(){
+      try{ await signOut(auth); }catch(e){ console.error("Logout error:", e); }
+    },
+    async checkAdmin(uid){
+      try{
+        const snap = await getDoc(doc(db, "admins", uid));
+        return snap.exists();
+      }catch(e){
+        console.error("Admin check error:", e);
+        return false;
+      }
+    }
+  };
+  onAuthStateChanged(auth, (user) => {
+    window.dispatchEvent(new CustomEvent('admin-auth-changed', { detail: { user } }));
+  });
 
   window.dispatchEvent(new Event('firebase-ready'));
 </script>
@@ -134,15 +168,31 @@ tr.peak td{background:#fffbee}
 .toggle-row{display:flex;align-items:center;gap:8px}
 .dot-input{width:32px;padding:2px 3px;border:1px solid #dde2ea;border-radius:4px;text-align:center;font-size:11px}
 @media(max-width:640px){.metrics{grid-template-columns:1fr 1fr}.grid2,.grid3{grid-template-columns:1fr}}
+/* Modo solo-lectura (viewer no autenticado como admin): deshabilita visualmente todo
+   control de edición/guardado. La seguridad real la impone la regla de Firestore;
+   esto es sólo para que la interfaz no invite a intentar algo que va a ser rechazado. */
+body.solo-lectura .btn:not(.btn-readonly),
+body.solo-lectura label.btn:not(.btn-readonly),
+body.solo-lectura input:not(#adminEmail):not(#adminPass),
+body.solo-lectura select:not(#selectorMes){
+  pointer-events:none;opacity:.45;filter:grayscale(.35);
+}
+.solo-lectura-aviso{display:none}
+body.solo-lectura .solo-lectura-aviso{display:block}
+#adminBox{display:flex;align-items:center;gap:6px}
+#adminForm{display:none;align-items:center;gap:6px;background:rgba(255,255,255,.12);padding:5px 8px;border-radius:8px}
+#adminForm input{padding:4px 6px;border-radius:4px;border:none;font-size:11px}
+#adminStatus{display:none;font-size:11px;background:rgba(255,255,255,.15);padding:4px 10px;border-radius:10px}
+#adminStatus a{color:#fff;text-decoration:underline}
 </style>
 </head>
-<body>
+<body class="solo-lectura">
 <header>
   <div>
     <h1>📦 Forecast Recursos Operativos</h1>
     <span>GGP objetivo: <span id="headerGGP">41</span> · sincronizado con Firestore</span>
   </div>
-  <div style="display:flex;gap:10px;align-items:center">
+  <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
     <div class="mes-selector">
       <label>Mes:</label>
       <select id="selectorMes" onchange="cambiarMes(this.value)"></select>
@@ -150,11 +200,21 @@ tr.peak td{background:#fffbee}
     <span id="syncStatus" style="font-size:11px;background:rgba(255,255,255,.15);padding:4px 10px;border-radius:10px">
       <span class="sync-dot sync-wait" id="syncDot"></span><span id="syncText">Conectando…</span>
     </span>
-    <button class="btn btn-outline" onclick="exportCSV()" style="font-size:11px;padding:5px 12px">⬇ CSV</button>
+    <button class="btn btn-outline btn-readonly" onclick="exportCSV()" style="font-size:11px;padding:5px 12px">⬇ CSV</button>
+    <div id="adminBox">
+      <button id="btnAdminToggle" class="btn btn-outline btn-readonly" style="font-size:11px;padding:5px 12px" onclick="toggleAdminForm()">🔐 Admin</button>
+      <div id="adminForm">
+        <input id="adminEmail" type="email" placeholder="email" style="width:130px">
+        <input id="adminPass" type="password" placeholder="contraseña" style="width:110px" onkeydown="if(event.key==='Enter')adminLogin()">
+        <button class="btn btn-primary btn-readonly" style="font-size:11px;padding:4px 10px" onclick="adminLogin()">Ingresar</button>
+      </div>
+      <span id="adminStatus"></span>
+    </div>
   </div>
 </header>
 
 <div class="container">
+  <div class="solo-lectura-aviso info-box">👁 Estás viendo el forecast en modo solo lectura. Iniciá sesión como administrador (🔐 Admin, arriba a la derecha) para cargar o editar datos.</div>
   <div id="globalError"></div>
   <div class="tabs">
     <button class="tab active" onclick="switchTab('forecast',this)">📊 Forecast</button>
@@ -245,7 +305,7 @@ tr.peak td{background:#fffbee}
       </table></div>
       <div class="btn-row" style="margin-top:12px">
         <button class="btn btn-success" onclick="addHistRowFromDotacion()">+ Agregar día (dato real)</button>
-        <button class="btn btn-outline" onclick="descargarPlantillaDotacion()">⬇ Descargar plantilla Excel</button>
+        <button class="btn btn-outline btn-readonly" onclick="descargarPlantillaDotacion()">⬇ Descargar plantilla Excel</button>
         <label class="btn btn-primary" style="cursor:pointer;margin-bottom:0">⬆ Cargar Excel
           <input type="file" id="fileDotacion" accept=".xlsx,.xls" style="display:none" onchange="cargarExcelDotacion(this.files[0])">
         </label>
@@ -303,7 +363,7 @@ tr.peak td{background:#fffbee}
       </div>
       <div class="btn-row">
         <button class="btn btn-primary" onclick="registrarTiempoReal()">💾 Guardar tiempos del día</button>
-        <button class="btn btn-outline" onclick="descargarPlantillaTiempos()">⬇ Descargar plantilla Excel</button>
+        <button class="btn btn-outline btn-readonly" onclick="descargarPlantillaTiempos()">⬇ Descargar plantilla Excel</button>
         <label class="btn btn-primary" style="cursor:pointer;margin-bottom:0">⬆ Cargar Excel
           <input type="file" id="fileTiempos" accept=".xlsx,.xls" style="display:none" onchange="cargarExcelTiempos(this.files[0])">
         </label>
@@ -491,7 +551,7 @@ tr.peak td{background:#fffbee}
       </table></div>
       <div class="btn-row" style="margin-top:12px">
         <button class="btn btn-success" onclick="addHistRow()">+ Agregar día</button>
-        <button class="btn btn-outline" onclick="descargarPlantillaHistorico()">⬇ Descargar plantilla Excel</button>
+        <button class="btn btn-outline btn-readonly" onclick="descargarPlantillaHistorico()">⬇ Descargar plantilla Excel</button>
         <label class="btn btn-primary" style="cursor:pointer;margin-bottom:0">⬆ Cargar Excel
           <input type="file" id="fileHistorico" accept=".xlsx,.xls" style="display:none" onchange="cargarExcelHistorico(this.files[0])">
         </label>
@@ -796,10 +856,18 @@ function estadoVacioMes(key){
   const eventosSemilla = (key===mesKey(ANIO,7))
     ? JSON.parse(JSON.stringify(EVENTOS_ORIG_JULIO))
     : [];
+  // Semilla de parámetros "en frío": mientras el mes nuevo no tenga ni un solo día real
+  // cargado, el forecast no debe arrancar de los defaults genéricos sino de la calibración
+  // real del último mes completo conocido (Junio para Julio), para que "lo esperado" del
+  // mes ya nazca realista. A medida que se cargan días reales del propio mes, esta semilla
+  // se va reemplazando automáticamente por la calibración propia (ver recalibrateHistDerived).
+  const paramsSemilla = (key===mesKey(ANIO,7))
+    ? calibrateFromHist(HIST_ORIG_JUNIO)
+    : JSON.parse(JSON.stringify(DEFAULT_PARAMS_FALLBACK));
   return{
     histData:[],
     eventos:eventosSemilla,
-    params:JSON.parse(JSON.stringify(DEFAULT_PARAMS_FALLBACK)),
+    params:paramsSemilla,
     fcPMManual:{}
   };
 }
@@ -851,6 +919,58 @@ function showGlobalError(msg){
      Los cambios se guardan localmente en esta pestaña pero no se subieron a Firestore. Revisá la consola del navegador (F12) y las reglas de seguridad de Firestore.</div>`;
 }
 function clearGlobalError(){document.getElementById('globalError').innerHTML='';}
+
+// ── ADMIN / SOLO-LECTURA ──────────────────────────────────────────────────────
+// Cualquiera puede ver el forecast sin loguearse (lectura pública, ver reglas de
+// Firestore). Sólo una cuenta marcada como admin (documento en /admins/{uid}) puede
+// cargar, editar o borrar datos. Mientras no se confirme que es admin, la interfaz
+// queda en modo solo-lectura (clase "solo-lectura" en <body>, puesta por defecto en el HTML).
+let isAdmin=false, currentAdminEmail=null;
+
+window.addEventListener('admin-auth-changed', async (e)=>{
+  const user=e.detail.user;
+  if(user){
+    isAdmin = await window.fbAuth.checkAdmin(user.uid);
+    currentAdminEmail = user.email;
+    if(!isAdmin) alert('Esta cuenta ('+user.email+') no tiene permisos de administrador en este forecast.');
+  } else {
+    isAdmin=false; currentAdminEmail=null;
+  }
+  applyAdminUI();
+});
+
+function applyAdminUI(){
+  document.body.classList.toggle('solo-lectura', !isAdmin);
+  const form=document.getElementById('adminForm');
+  const status=document.getElementById('adminStatus');
+  const toggleBtn=document.getElementById('btnAdminToggle');
+  if(isAdmin){
+    form.style.display='none';
+    toggleBtn.style.display='none';
+    status.style.display='inline-block';
+    status.innerHTML='👤 '+(currentAdminEmail||'admin')+' · <a href="#" onclick="adminLogout();return false;">Salir</a>';
+  } else {
+    toggleBtn.style.display='inline-block';
+    status.style.display='none';
+  }
+}
+function toggleAdminForm(){
+  const f=document.getElementById('adminForm');
+  f.style.display = (f.style.display==='flex') ? 'none' : 'flex';
+}
+async function adminLogin(){
+  const email=document.getElementById('adminEmail').value.trim();
+  const pass=document.getElementById('adminPass').value;
+  if(!email||!pass) return alert('Completá email y contraseña.');
+  const res = await window.fbAuth.login(email,pass);
+  document.getElementById('adminPass').value='';
+  if(!res.ok) alert('No se pudo iniciar sesión: '+res.error);
+  // Si el login fue exitoso, admin-auth-changed se dispara solo y actualiza la UI.
+}
+async function adminLogout(){
+  await window.fbAuth.logout();
+}
+
 
 // ── CÁLCULOS AUTOMÁTICOS DE HISTÓRICO (GGP real, GNP, %Std) ──────────────────
 // GGP real = Vol.procesado / (presentes AM + presentes PM) / 7.33
@@ -978,6 +1098,10 @@ function renderHistTabIfActive(){ if(document.getElementById('tab-historico').cl
 function renderEventosTabIfActive(){ if(document.getElementById('tab-eventos').classList.contains('active')) renderEventosTab(); }
 
 function recalibrateHistDerived(){
+  // Si el mes activo todavía no tiene ni un día real cargado, no recalibramos:
+  // se conserva la semilla de forecast vigente (ver estadoVacioMes) en vez de
+  // pisarla con los defaults genéricos de calibrateFromHist([]).
+  if(!histData.length) return;
   const cal=calibrateFromHist(histData);
   params.shareStd=cal.shareStd;
   params.shareVol=cal.shareVol;
@@ -999,6 +1123,11 @@ function saveAll(){
   recalibrateHistDerived();
   persistirReferenciasEnMes();
   updateUI();
+  if(!isAdmin){
+    // Los viewers no escriben en Firestore (la regla de seguridad lo rechazaría igual);
+    // los cambios quedan sólo en esta pestaña hasta que un admin los cargue.
+    return;
+  }
   setSync('wait','Guardando…');
   clearTimeout(saveTimer);
   saveTimer=setTimeout(async ()=>{
@@ -1013,7 +1142,9 @@ function saveAndCompute(){saveAll();compute();}
 function recalibrate(){
   recalibrateHistDerived();
   saveAndCompute();updateUI();
-  alert('✅ Modelo recalibrado con los '+histData.length+' días históricos del mes activo.');
+  alert(histData.length
+    ? '✅ Modelo recalibrado con los '+histData.length+' días históricos del mes activo.'
+    : '⚠ Todavía no hay días reales cargados en '+mesActivo+'. Se mantiene la calibración/semilla de forecast vigente hasta que se cargue el primer día real.');
 }
 function resetDefaults(){if(!confirm('¿Restaurar defaults?'))return;
   params=JSON.parse(JSON.stringify(DEFAULT_PARAMS_FALLBACK));persistirReferenciasEnMes();saveAndCompute();updateUI();buildFactDiaUI();}
@@ -1519,6 +1650,22 @@ function registrarTiempoReal(){
   alert('✅ Tiempos guardados para '+fecha);
 }
 
+// Busca días con tiempos reales (inicio/fin de proceso y despacho) para usar como base
+// de la regresión: primero en el mes activo, y si todavía no hay ninguno (por ejemplo,
+// recién se seleccionó un mes nuevo y no se cargó nada todavía), cae al mes anterior más
+// reciente que sí tenga tiempos reales cargados. Así el forecast de tiempos no depende de
+// que el mes activo ya tenga al menos un día real.
+function obtenerBaseTiempos(){
+  const propios=histData.filter(h=>h.vol>0 && h.inicioProceso && h.finProceso);
+  if(propios.length) return{base:propios,prestado:false,mesPrestado:null};
+  const claves=Object.keys(dataPorMes).filter(k=>k<mesActivo).sort().reverse();
+  for(const k of claves){
+    const cand=(dataPorMes[k].histData||[]).filter(h=>h.vol>0 && h.inicioProceso && h.finProceso);
+    if(cand.length) return{base:cand,prestado:true,mesPrestado:k};
+  }
+  return{base:[],prestado:false,mesPrestado:null};
+}
+
 function renderTiemposTab(rows){
   const hists=rows.filter(r=>r.tipo==='hist'&&r.hist);
   const tb=document.getElementById('tiempoBody');tb.innerHTML='';
@@ -1526,56 +1673,70 @@ function renderTiemposTab(rows){
     document.getElementById('tiempoMetrics').innerHTML='';
     mk('chartProcDur',{type:'bar',data:{labels:[],datasets:[]}});
     mk('chartDespDur',{type:'bar',data:{labels:[],datasets:[]}});
-    document.getElementById('tiempoFcBody').innerHTML='';
+  } else {
+    hists.forEach(r=>{
+      const h=r.hist;
+      const durProc=timeToMin(h.finProceso)-timeToMin(h.inicioProceso);
+      const durDesp=timeToMin(h.finDespacho)-timeToMin(h.inicioDespacho);
+      const tr=document.createElement('tr');tr.className='hist';
+      tr.innerHTML=`<td class="left">${diaLabel(r)}</td><td>${r.dnom}</td>
+        <td>${r.vol.toLocaleString('es-AR')}</td>
+        <td>${h.inicioRuteo||'—'}</td><td>${h.inicioProceso||'—'}</td><td>${h.finProceso||'—'}</td>
+        <td style="font-weight:600;color:${durProc>200?'#e74c3c':durProc>160?'#d68910':'#27ae60'}">${isFinite(durProc)?durProc:'—'}</td>
+        <td>${h.inicioDespacho||'—'}</td><td>${h.finDespacho||'—'}</td>
+        <td style="font-weight:600;color:${durDesp>120?'#e74c3c':durDesp>60?'#d68910':'#27ae60'}">${isFinite(durDesp)?durDesp:'—'}</td>
+        <td><span class="tag tag-h">real</span></td>`;
+      tb.appendChild(tr);
+    });
+
+    const labels=hists.map(r=>diaLabel(r));
+    const dursProc=hists.map(r=>{const h=r.hist;return timeToMin(h.finProceso)-timeToMin(h.inicioProceso);}).filter(v=>isFinite(v));
+    const dursDesp=hists.map(r=>{const h=r.hist;return timeToMin(h.finDespacho)-timeToMin(h.inicioDespacho);}).filter(v=>isFinite(v));
+    mk('chartProcDur',{type:'bar',data:{labels,datasets:[
+      {label:'Dur. procesamiento (min)',data:hists.map(r=>{const h=r.hist;const v=timeToMin(h.finProceso)-timeToMin(h.inicioProceso);return isFinite(v)?v:null;}),
+       backgroundColor:hists.map(r=>{const h=r.hist;const v=timeToMin(h.finProceso)-timeToMin(h.inicioProceso);return v>200?'#e74c3c':v>160?'#d68910':'#27ae60';})}
+    ]},options:opt2('Minutos','',false)});
+    mk('chartDespDur',{type:'bar',data:{labels,datasets:[
+      {label:'Dur. despacho (min)',data:hists.map(r=>{const h=r.hist;const v=timeToMin(h.finDespacho)-timeToMin(h.inicioDespacho);return isFinite(v)?v:null;}),
+       backgroundColor:hists.map(r=>{const h=r.hist;const v=timeToMin(h.finDespacho)-timeToMin(h.inicioDespacho);return v>120?'#e74c3c':v>60?'#d68910':'#27ae60';})}
+    ]},options:opt2('Minutos','',false)});
+
+    const avgProc=dursProc.length?(dursProc.reduce((a,b)=>a+b,0)/dursProc.length).toFixed(0):'-';
+    const avgDesp=dursDesp.length?(dursDesp.reduce((a,b)=>a+b,0)/dursDesp.length).toFixed(0):'-';
+    document.getElementById('tiempoMetrics').innerHTML=`
+      <div class="metric"><div class="metric-label">Dur. proc. prom.</div><div class="metric-value">${avgProc}</div><div class="metric-sub">minutos (real)</div></div>
+      <div class="metric"><div class="metric-label">Proc. máx.</div><div class="metric-value">${dursProc.length?Math.max(...dursProc):'-'}</div><div class="metric-sub">minutos</div></div>
+      <div class="metric"><div class="metric-label">Proc. mín.</div><div class="metric-value">${dursProc.length?Math.min(...dursProc):'-'}</div><div class="metric-sub">minutos</div></div>
+      <div class="metric"><div class="metric-label">Dur. desp. prom.</div><div class="metric-value">${avgDesp}</div><div class="metric-sub">minutos (real)</div></div>
+      <div class="metric"><div class="metric-label">Desp. máx.</div><div class="metric-value">${dursDesp.length?Math.max(...dursDesp):'-'}</div><div class="metric-sub">minutos</div></div>
+      <div class="metric"><div class="metric-label">Inicio proc. prom.</div><div class="metric-value">${minToHM(hists.reduce((s,r)=>s+(timeToMin(r.hist.inicioProceso)||0),0)/hists.length)}</div><div class="metric-sub">hora (real)</div></div>`;
+  }
+
+  // ── Forecast: usa los tiempos reales del mes activo si ya hay, y si no, cae al último
+  // mes anterior con tiempos cargados (ver obtenerBaseTiempos), para que el forecast de un
+  // mes nuevo (ej. Julio) nazca realista aunque todavía no se haya cargado ni un día real.
+  const {base:baseTiempos,prestado,mesPrestado} = hists.length
+    ? {base:hists.map(r=>r.hist),prestado:false,mesPrestado:null}
+    : obtenerBaseTiempos();
+
+  const tbFc=document.getElementById('tiempoFcBody');tbFc.innerHTML='';
+  if(!baseTiempos.length){
+    tbFc.innerHTML='<tr><td colspan="11" style="color:#aaa;padding:14px">Todavía no hay tiempos reales cargados (ni de este mes ni de meses anteriores) para poder estimar el forecast.</td></tr>';
     return;
   }
-  hists.forEach(r=>{
-    const h=r.hist;
-    const durProc=timeToMin(h.finProceso)-timeToMin(h.inicioProceso);
-    const durDesp=timeToMin(h.finDespacho)-timeToMin(h.inicioDespacho);
-    const tr=document.createElement('tr');tr.className='hist';
-    tr.innerHTML=`<td class="left">${diaLabel(r)}</td><td>${r.dnom}</td>
-      <td>${r.vol.toLocaleString('es-AR')}</td>
-      <td>${h.inicioRuteo||'—'}</td><td>${h.inicioProceso||'—'}</td><td>${h.finProceso||'—'}</td>
-      <td style="font-weight:600;color:${durProc>200?'#e74c3c':durProc>160?'#d68910':'#27ae60'}">${isFinite(durProc)?durProc:'—'}</td>
-      <td>${h.inicioDespacho||'—'}</td><td>${h.finDespacho||'—'}</td>
-      <td style="font-weight:600;color:${durDesp>120?'#e74c3c':durDesp>60?'#d68910':'#27ae60'}">${isFinite(durDesp)?durDesp:'—'}</td>
-      <td><span class="tag tag-h">real</span></td>`;
-    tb.appendChild(tr);
-  });
+  if(prestado){
+    tbFc.innerHTML=`<tr><td colspan="11" style="color:#8a5200;background:#fff8e1;padding:8px 10px;font-size:10.5px">ℹ️ ${mesActivo} todavía no tiene tiempos reales cargados: el forecast de abajo usa como base los tiempos reales de ${mesPrestado}, hasta que se carguen los primeros días reales de este mes.</td></tr>`;
+  }
 
-  const labels=hists.map(r=>diaLabel(r));
-  const dursProc=hists.map(r=>{const h=r.hist;return timeToMin(h.finProceso)-timeToMin(h.inicioProceso);}).filter(v=>isFinite(v));
-  const dursDesp=hists.map(r=>{const h=r.hist;return timeToMin(h.finDespacho)-timeToMin(h.inicioDespacho);}).filter(v=>isFinite(v));
-  mk('chartProcDur',{type:'bar',data:{labels,datasets:[
-    {label:'Dur. procesamiento (min)',data:hists.map(r=>{const h=r.hist;const v=timeToMin(h.finProceso)-timeToMin(h.inicioProceso);return isFinite(v)?v:null;}),
-     backgroundColor:hists.map(r=>{const h=r.hist;const v=timeToMin(h.finProceso)-timeToMin(h.inicioProceso);return v>200?'#e74c3c':v>160?'#d68910':'#27ae60';})}
-  ]},options:opt2('Minutos','',false)});
-  mk('chartDespDur',{type:'bar',data:{labels,datasets:[
-    {label:'Dur. despacho (min)',data:hists.map(r=>{const h=r.hist;const v=timeToMin(h.finDespacho)-timeToMin(h.inicioDespacho);return isFinite(v)?v:null;}),
-     backgroundColor:hists.map(r=>{const h=r.hist;const v=timeToMin(h.finDespacho)-timeToMin(h.inicioDespacho);return v>120?'#e74c3c':v>60?'#d68910':'#27ae60';})}
-  ]},options:opt2('Minutos','',false)});
-
-  const avgProc=dursProc.length?(dursProc.reduce((a,b)=>a+b,0)/dursProc.length).toFixed(0):'-';
-  const avgDesp=dursDesp.length?(dursDesp.reduce((a,b)=>a+b,0)/dursDesp.length).toFixed(0):'-';
-  document.getElementById('tiempoMetrics').innerHTML=`
-    <div class="metric"><div class="metric-label">Dur. proc. prom.</div><div class="metric-value">${avgProc}</div><div class="metric-sub">minutos (real)</div></div>
-    <div class="metric"><div class="metric-label">Proc. máx.</div><div class="metric-value">${dursProc.length?Math.max(...dursProc):'-'}</div><div class="metric-sub">minutos</div></div>
-    <div class="metric"><div class="metric-label">Proc. mín.</div><div class="metric-value">${dursProc.length?Math.min(...dursProc):'-'}</div><div class="metric-sub">minutos</div></div>
-    <div class="metric"><div class="metric-label">Dur. desp. prom.</div><div class="metric-value">${avgDesp}</div><div class="metric-sub">minutos (real)</div></div>
-    <div class="metric"><div class="metric-label">Desp. máx.</div><div class="metric-value">${dursDesp.length?Math.max(...dursDesp):'-'}</div><div class="metric-sub">minutos</div></div>
-    <div class="metric"><div class="metric-label">Inicio proc. prom.</div><div class="metric-value">${minToHM(hists.reduce((s,r)=>s+(timeToMin(r.hist.inicioProceso)||0),0)/hists.length)}</div><div class="metric-sub">hora (real)</div></div>`;
-
-  const ptsProc=hists.map(r=>{const h=r.hist;const dur=timeToMin(h.finProceso)-timeToMin(h.inicioProceso);return{vol:r.vol,dur};}).filter(p=>isFinite(p.dur));
-  const ptsDesp=hists.map(r=>{const h=r.hist;const dur=timeToMin(h.finDespacho)-timeToMin(h.inicioDespacho);return{vol:r.vol,dur};}).filter(p=>isFinite(p.dur));
+  const ptsProc=baseTiempos.map(h=>({vol:h.vol,dur:timeToMin(h.finProceso)-timeToMin(h.inicioProceso)})).filter(p=>isFinite(p.dur));
+  const ptsDesp=baseTiempos.map(h=>({vol:h.vol,dur:timeToMin(h.finDespacho)-timeToMin(h.inicioDespacho)})).filter(p=>isFinite(p.dur));
   const regProc=regresionLineal(ptsProc,'vol','dur');
   const regDesp=regresionLineal(ptsDesp,'vol','dur');
-  const avgInicioProcMin=hists.reduce((s,r)=>s+(timeToMin(r.hist.inicioProceso)||0),0)/hists.length;
-  const avgInicioRuteoMin=hists.reduce((s,r)=>s+(timeToMin(r.hist.inicioRuteo)||0),0)/Math.max(1,hists.filter(r=>r.hist.inicioRuteo).length);
-  const avgInicioDespMin=hists.reduce((s,r)=>s+(timeToMin(r.hist.inicioDespacho)||480),0)/hists.length;
+  const avgInicioProcMin=baseTiempos.reduce((s,h)=>s+(timeToMin(h.inicioProceso)||0),0)/baseTiempos.length;
+  const avgInicioRuteoMin=baseTiempos.reduce((s,h)=>s+(timeToMin(h.inicioRuteo)||0),0)/Math.max(1,baseTiempos.filter(h=>h.inicioRuteo).length);
+  const avgInicioDespMin=baseTiempos.reduce((s,h)=>s+(timeToMin(h.inicioDespacho)||480),0)/baseTiempos.length;
 
   const fcRows=rows.filter(r=>r.tipo!=='hist'&&r.tipo!=='holiday');
-  const tbFc=document.getElementById('tiempoFcBody');tbFc.innerHTML='';
   fcRows.forEach(r=>{
     const durProcEst=Math.max(30,Math.round(regProc.slope*r.vol+regProc.intercept));
     const durDespEst=Math.max(15,Math.round(regDesp.slope*r.vol+regDesp.intercept));
@@ -1595,7 +1756,7 @@ function renderTiemposTab(rows){
       <td>${tag}</td>`;
     tbFc.appendChild(tr);
   });
-  if(!fcRows.length){
+  if(!fcRows.length && !prestado){
     tbFc.innerHTML='<tr><td colspan="11" style="color:#aaa;padding:14px">No quedan días forecast pendientes en el mes.</td></tr>';
   }
 }
@@ -1606,9 +1767,13 @@ function renderProductividadTab(rows){
   const fc=rows.filter(r=>r.tipo!=='holiday'&&r.tipo!=='hist');
   if(!h.length){
     document.getElementById('prodMetrics').innerHTML='';
-    document.getElementById('shareBody').innerHTML='';
-    document.getElementById('shareFcBody').innerHTML='';
+    document.getElementById('shareBody').innerHTML='<tr><td colspan="12" style="color:#aaa;padding:14px">Todavía no hay días reales cargados este mes. Mostrando forecast estimado abajo.</td></tr>';
     document.getElementById('prodMetricsFc').innerHTML='';
+    mk('chartGGP',{type:'bar',data:{labels:[],datasets:[]}});
+    mk('chartGGPComp',{type:'line',data:{labels:[],datasets:[]}});
+    mk('chartDS',{type:'line',data:{labels:[],datasets:[]}});
+    mk('chartAus',{type:'bar',data:{labels:[],datasets:[]}});
+    renderProductividadForecast(fc);
     return;
   }
   const labels=h.map(r=>diaLabel(r));
@@ -1666,6 +1831,12 @@ function renderProductividadTab(rows){
     <div class="metric"><div class="metric-label">Ausentismo AM prom.</div><div class="metric-value" style="color:${avgAus>5?'#e74c3c':'#27ae60'}">${avgAus.toFixed(1)}%</div><div class="metric-sub">real histórico</div></div>
     <div class="metric"><div class="metric-label">Diferencia GGP real–obj</div><div class="metric-value" style="color:${avgGGPr>=params.GGP?'#27ae60':'#e74c3c'}">${(avgGGPr-params.GGP).toFixed(1)}</div><div class="metric-sub">prom. histórico</div></div>`;
 
+  renderProductividadForecast(fc);
+}
+
+// Sección de forecast de productividad (siempre calculable a partir de params, aunque
+// el mes activo todavía no tenga ni un día real cargado — ver estadoVacioMes/recalibrateHistDerived).
+function renderProductividadForecast(fc){
   const tbFc=document.getElementById('shareFcBody');tbFc.innerHTML='';
   const dsEst=params.avgDS||0.98;
   fc.forEach(r=>{
@@ -2075,8 +2246,15 @@ function descargarPlantillaTiempos(){
 }
 function horaPlantilla(val){
   if(val==null||val==='') return '';
-  if(typeof val==='number'){ // fracción de día Excel
-    const totalMin=Math.round(val*24*60);
+  if(val instanceof Date && !isNaN(val.getTime())){
+    // Celda formateada como hora/fecha en Excel: con cellDates:true, SheetJS entrega un
+    // objeto Date cuyo valor está expresado en UTC (independientemente de la zona horaria
+    // del navegador), por eso usamos getUTCHours/getUTCMinutes y no los locales.
+    return String(val.getUTCHours()).padStart(2,'0')+':'+String(val.getUTCMinutes()).padStart(2,'0');
+  }
+  if(typeof val==='number'){ // fracción de día Excel (o serial con parte entera de fecha)
+    const frac=val-Math.floor(val);
+    const totalMin=Math.round(frac*24*60);
     return String(Math.floor(totalMin/60)%24).padStart(2,'0')+':'+String(totalMin%60).padStart(2,'0');
   }
   const s=String(val).trim();
@@ -2086,7 +2264,8 @@ function cargarExcelTiempos(file){
   if(!file)return;
   leerXLSX(file,(json)=>{
     let count=0;
-    json.forEach(row=>{
+    const filasSinHoras=[];
+    json.forEach((row,i)=>{
       const fechaISO=fechaPlantillaAISO(row.Fecha);
       if(!fechaISO || !fechaISO.startsWith(mesActivo)) return;
       const h=getOrCreateHist(fechaISO);
@@ -2098,6 +2277,7 @@ function cargarExcelTiempos(file){
       if(fP) h.finProceso=fP;
       if(iD) h.inicioDespacho=iD;
       if(fD) h.finDespacho=fD;
+      if(!iR && !iP && !fP && !iD && !fD) filasSinHoras.push('Fila '+(i+2)+' ('+fechaISO+')');
       count++;
     });
     if(count===0){
@@ -2105,6 +2285,10 @@ function cargarExcelTiempos(file){
       alert('⚠ No se cargó ningún registro.\n\nMes activo actual: '+mesActivo+'\nFilas leídas del Excel: '+json.length+'\n\n'+
         (motivos.length?motivos.join('\n'):'No se detectaron filas con datos. Verificá que la columna "Fecha" esté completa y que el mes activo en el encabezado de la página sea el correcto antes de subir el archivo.'));
       return;
+    }
+    if(filasSinHoras.length){
+      alert('⚠ '+filasSinHoras.length+' fila(s) tenían la fecha correcta pero ningún horario pudo leerse (columnas vacías o en un formato no reconocido):\n\n'+filasSinHoras.join('\n')+
+        '\n\nRevisá que esas celdas tengan hora cargada (formato hora de Excel o texto "HH:MM").');
     }
     finalizarCargaMasiva(count,'Carga de Tiempos');
   });
